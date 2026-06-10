@@ -159,6 +159,11 @@ USE_LLM = bool(DEEPSEEK_API_KEY)
 # post a aquest webhook perquè make.com faci la revisió/publicació a Reddit.
 MAKE_WEBHOOK_URL = os.getenv("MAKE_WEBHOOK_URL", "").strip()
 
+# Webhook SEPARAT per al post de la graella d'anime de SX3 (divendres). El fa
+# servir sx3_schedule.py --push; manté el flux de SX3 independent del recull
+# setmanal de notícies.
+SX3_MAKE_WEBHOOK_URL = os.getenv("SX3_MAKE_WEBHOOK_URL", "").strip()
+
 # El mòdul "Submit a Post" de make.com envia el text dins la URL i peta amb
 # 414 si supera el límit del servidor (~8 KB un cop codificat). Limitem el cos
 # del post a aquest nombre de bytes (codificats) i, si cal, es retallen notícies
