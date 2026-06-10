@@ -57,7 +57,7 @@ REQUEST_RETRIES = 2           # Reintents per petició fallida
 DELAY_MIN = 3.0               # Delay mínim entre peticions (segons)
 DELAY_MAX = 5.0               # Delay màxim entre peticions (segons)
 MAX_ITEMS_PER_SOURCE = 5      # Topall de notícies per font (manté el post raonable)
-SUMMARY_MAX_CHARS = 280       # Llargada màxima del resum curt
+SUMMARY_MAX_CHARS = 160       # Resum curt: una frase, amb enllaç a l'original per a més info
 
 # User-Agent realista de navegador (Chrome a Linux)
 USER_AGENT = (
@@ -158,6 +158,12 @@ USE_LLM = bool(DEEPSEEK_API_KEY)
 # Si defineixes MAKE_WEBHOOK_URL, en acabar s'envia el JSON estructurat del
 # post a aquest webhook perquè make.com faci la revisió/publicació a Reddit.
 MAKE_WEBHOOK_URL = os.getenv("MAKE_WEBHOOK_URL", "").strip()
+
+# El mòdul "Submit a Post" de make.com envia el text dins la URL i peta amb
+# 414 si supera el límit del servidor (~8 KB un cop codificat). Limitem el cos
+# del post a aquest nombre de bytes (codificats) i, si cal, es retallen notícies
+# (queden igualment al JSON i al comentari). Si tot i així peta, baixa'l a ~3800.
+MAKE_BODY_MAX_ENCODED = 7500
 
 # --------------------------------------------------------------------------- #
 # Reddit (publicació directa amb PRAW)                                          #

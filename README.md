@@ -152,27 +152,37 @@ en acabar `main.py` s'hi envia el JSON del post:
 
 ### 🖼️ Nota sobre les imatges a Reddit
 
-Reddit **no incrusta imatges externes dins d'un post de text**. Per això:
-- cada notícia inclou la seva imatge com a **enllaç** (`🖼️ [Imatge](url)`);
-- el JSON exposa `lead_image_url` i `items[].image_url` perquè make.com decideixi
-  (p. ex. publicar com a *gallery*, o fer servir la imatge destacada del post).
-- A **Discord/Telegram** aquestes URLs sí que es renderitzen com a previsualització,
-  cosa que reforça l'opció multicanal.
+Reddit **no incrusta imatges externes** ni en un post de text ni en un comentari
+(sempre es veuen com a enllaç, mai com a foto). Per això el post és **text-first**:
+cada notícia enllaça a la seva font, on el lector ja veu les imatges. El JSON
+segueix exposant `lead_image_url` i `items[].image_url` per si en el futur es
+fan servir en altres canals (Discord/Telegram **sí** que renderitzen les URLs).
 
-## ⏰ Automatitzar-ho cada setmana
+## ⏰ Automatitzar-ho cada setmana (GitHub Actions)
 
-**Opció 1 — cron a WSL** (cada dilluns a les 9:00):
-```bash
-crontab -e
-# afegeix:
-0 9 * * 1 /home/jbosch/code/anime-scraper/run.sh >> /home/jbosch/code/anime-scraper/logs/cron.log 2>&1
+El cron viu a `.github/workflows/weekly-roundup.yml` i s'executa **cada dilluns a
+les 08:00 UTC** (al núvol, sense el teu PC engegat). El flux complet:
+
 ```
-> ⚠️ WSL no sempre té cron actiu. Activa'l amb `sudo service cron start` (o
-> programa-ho des de make.com amb un mòdul *Schedule* que cridi un webhook que
-> dispari l'scraper).
+Dilluns 08:00 UTC → GitHub Actions executa main.py
+   → scrapeja + DeepSeek (resums en català) → POST al webhook de make
+        → make publica el post a r/AnimeCatala
+```
 
-**Opció 2 — make.com fa de rellotge:** un mòdul **Schedule** setmanal que cridi
-un webhook teu (o un GitHub Action) que executi `python main.py`.
+**Configuració (un sol cop):**
+1. **Secrets** del repo (Settings → Secrets and variables → Actions):
+   - `DEEPSEEK_API_KEY` i `MAKE_WEBHOOK_URL`. (El `.env` NO es puja.)
+2. A **make**, deixa l'escenari **actiu** (toggle ON), no en mode "Run once".
+3. Puja-ho tot: `git add -A && git commit -m "cron setmanal" && git push`.
+4. Prova'l a mà des de la pestanya **Actions → Run workflow**.
+
+L'històric (`output/history.json`) es desa automàticament al repo cada setmana
+perquè no es repeteixin notícies. Per canviar el dia/hora, edita la línia `cron:`
+del workflow (format: <https://crontab.guru>).
+
+> **Alternativa (cron a WSL):** `crontab -e` i afegir
+> `0 9 * * 1 /home/jbosch/code/anime-scraper/run.sh` — però depèn que el teu PC
+> estigui engegat i que WSL tingui cron actiu (`sudo service cron start`).
 
 ## ➕ Afegir una font nova
 
