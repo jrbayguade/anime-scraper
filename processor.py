@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 import logging
+import urllib.parse
 from datetime import datetime, timedelta
 
 import requests
@@ -115,11 +116,11 @@ def summarize_items(items: list[NewsItem]) -> None:
         "anglès."
     )
     user = (
-        "Per a cada notícia, escriu un resum curt (1-2 frases, màxim "
-        f"{config.SUMMARY_MAX_CHARS} caràcters) en català, atractiu i informatiu. "
-        "Si el text està en anglès, tradueix-lo. No inventis dades que no "
-        "apareguin. Respon NOMÉS amb un array JSON d'objectes "
-        '{"id": <int>, "summary": "<resum en català>"}.\n\n'
+        "Per a cada notícia, escriu un resum molt curt en català: UNA sola frase "
+        f"(màxim {config.SUMMARY_MAX_CHARS} caràcters), atractiva i directa, ja "
+        "que el lector tindrà l'enllaç a l'original per a més detalls. Si el text "
+        "està en anglès, tradueix-lo. No inventis dades que no apareguin. Respon "
+        'NOMÉS amb un array JSON d\'objectes {"id": <int>, "summary": "<resum>"}.\n\n'
         f"Notícies:\n{json.dumps(payload, ensure_ascii=False)}"
     )
     raw = _deepseek_chat(
@@ -204,57 +205,106 @@ def _build_comment(items: list[NewsItem], lead_image: str) -> str:
     return "\n".join(lines)
 
 
+def _encoded_len(text: str) -> int:
+    """Bytes que ocuparà el text un cop codificat dins d'una URL (com fa make)."""
+    return len(urllib.parse.quote(text))
+
+
+def _item_line(it: NewsItem) -> str:
+    """Una notícia en format de llista compacte: títol enllaçat a l'original +
+    resum d'una frase + meta (categoria · data) en cursiva."""
+    emoji = config.CATEGORY_EMOJI.get((it.category or "").lower(),
+                                      config.DEFAULT_CATEGORY_EMOJI)
+    cat = f"{emoji} {it.category}" if it.category else ""
+    meta = " · ".join(p for p in (cat, date_ca(it.date)) if p)
+    line = f"- **[{it.title}]({it.url})**"
+    if it.summary_ca.strip():
+        line += f" — {it.summary_ca.strip()}"
+    if meta:
+        line += f" *({meta})*"
+    return line
+
+
 def build_post(items: list[NewsItem]) -> dict:
-    """Retorna un dict amb title, markdown i dades estructurades."""
+    """Retorna un dict amb title, markdown i dades estructurades.
+
+    El cos és una llista compacta (cada notícia enllaça a l'original) i es manté
+    SOTA un pressupost de bytes (config.MAKE_BODY_MAX_ENCODED) perquè el mòdul de
+    Reddit de make.com no peti amb 414. Si una setmana hi ha massa notícies, les
+    que no caben es deixen fora del cos (segueixen al JSON i a la galeria).
+    """
     today = datetime.now()
     week_start = today - timedelta(days=config.DAYS_BACK)
     week_end = today
 
     title = (f"📺 Novetats d'anime i manga en català · Setmana del "
              f"{date_ca(week_start)} al {date_ca(week_end)}")
+    intro = build_intro(items, week_start, week_end)
+    # El títol NO va al cos: a Reddit (i a make) va al seu propi camp "title".
+    # Si l'incloguéssim aquí, sortiria duplicat.
+    header = f"{intro}\n"
+    fonts = " · ".join(s["name"] for s in config.SOURCES if s.get("enabled", True))
 
-    lines: list[str] = [f"# {title}", ""]
-    lines.append(build_intro(items, week_start, week_end))
-    lines.append("")
+    def footer(extra: str = "") -> str:
+        return (f"\n{extra}---\n"
+                f"*🤖 Recull automàtic · Fonts: {fonts}*")
 
+    included: list[NewsItem] = []
     if not items:
-        lines.append("_Aquesta setmana no s'han trobat novetats a les fonts. "
-                     "Torna la setmana que ve! 🙂_")
+        markdown = (header + "\n_Aquesta setmana no s'han trobat novetats a les "
+                    "fonts. Torna la setmana que ve! 🙂_\n" + footer())
+        lead_image = ""
+        comment_markdown = ""
     else:
-        # Agrupem per font, respectant l'ordre de config.SOURCES
         order = {s["key"]: i for i, s in enumerate(config.SOURCES)}
         by_source: dict[str, list[NewsItem]] = {}
         for it in items:
             by_source.setdefault(it.source_key, []).append(it)
+        ordered_keys = sorted(by_source, key=lambda k: order.get(k, 99))
 
-        for key in sorted(by_source, key=lambda k: order.get(k, 99)):
+        # Reserva de bytes per al peu i a una possible nota de "+N notícies més"
+        reserve = _encoded_len(
+            footer("➕ I 99 novetats més aquesta setmana, a les fonts! 👀\n\n")
+        ) + 80
+
+        body_parts: list[str] = []
+        stop = False
+        for key in ordered_keys:
+            if stop:
+                break
             group = by_source[key]
             head = group[0]
-            lines.append(f"## {head.source_emoji} {head.source} "
-                         f"({len(group)})")
-            lines.append("")
+            section = f"\n## {head.source_emoji} {head.source}\n\n"
+            section_added = False
             for it in group:
-                badge = _category_badge(it.category)
-                meta = " · ".join(p for p in (badge, date_ca(it.date)) if p)
-                lines.append(f"**[{it.title}]({it.url})**  ")
-                if meta:
-                    lines.append(f"{meta}  ")
-                if it.summary_ca:
-                    lines.append(f"{it.summary_ca}  ")
-                if it.image_url:
-                    lines.append(f"🖼️ [Imatge]({it.image_url})  ")
-                lines.append("")
-            lines.append("---")
-            lines.append("")
+                line = _item_line(it) + "\n"
+                prefix = ("" if section_added else section) + line
+                candidate = header + "".join(body_parts) + prefix
+                if _encoded_len(candidate) + reserve <= config.MAKE_BODY_MAX_ENCODED:
+                    if not section_added:
+                        body_parts.append(section)
+                        section_added = True
+                    body_parts.append(line)
+                    included.append(it)
+                else:
+                    stop = True
+                    break
 
-    fonts = " · ".join(s["name"] for s in config.SOURCES if s.get("enabled", True))
-    lines.append(f"*🤖 Recull generat automàticament. Fonts: {fonts}.*  ")
-    lines.append("*Has vist algun error o vols proposar una font nova? "
-                 "Comenta-ho! 💬*")
+        overflow = len(items) - len(included)
+        extra = ""
+        if overflow > 0:
+            extra = (f"➕ **I {overflow} novetats més** aquesta setmana — "
+                     "fes una ullada a les fonts! 👀\n\n")
+            log.info("El cos del post s'ha retallat a %d/%d notícies pel límit de "
+                     "bytes (la resta queden al JSON i a la galeria).",
+                     len(included), len(items))
+        markdown = header + "".join(body_parts) + footer(extra)
+        lead_image = next((it.image_url for it in items if it.image_url), "")
+        comment_markdown = _build_comment(items, lead_image)
 
-    markdown = "\n".join(lines)
-    lead_image = next((it.image_url for it in items if it.image_url), "")
-    comment_markdown = _build_comment(items, lead_image)
+    encoded = _encoded_len(markdown)
+    log.info("Cos del post: %d caràcters (%d bytes codificats, límit %d).",
+             len(markdown), encoded, config.MAKE_BODY_MAX_ENCODED)
 
     structured = {
         "generated_at": today.isoformat(timespec="seconds"),
@@ -263,6 +313,8 @@ def build_post(items: list[NewsItem]) -> dict:
         "subreddit": config.SUBREDDIT,
         "title": title,
         "item_count": len(items),
+        "body_item_count": len(included),
+        "body_encoded_bytes": encoded,
         "lead_image_url": lead_image,
         "markdown": markdown,
         "comment_markdown": comment_markdown,
@@ -278,7 +330,10 @@ def save_outputs(structured: dict) -> tuple:
     config.POSTS_DIR.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now().strftime("%Y-%m-%d")
     md_path = config.POSTS_DIR / f"{stamp}-anime-catala.md"
-    md_path.write_text(structured["markdown"], encoding="utf-8")
+    # Al fitxer .md hi posem el títol a dalt (per llegir-lo bé), però el camp
+    # "markdown" del JSON NO el porta (a Reddit el títol va al seu propi camp).
+    md_path.write_text(f"# {structured['title']}\n\n{structured['markdown']}",
+                       encoding="utf-8")
     config.LATEST_JSON.write_text(
         json.dumps(structured, ensure_ascii=False, indent=2), encoding="utf-8"
     )
