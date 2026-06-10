@@ -199,6 +199,7 @@ FOOTER_PROMO_ENABLED = False
 FOOTER_PROMO_TEXT = (
     "✍️ Fet per algú que també construeix "
     "[Mail2Follow](https://www.zinkforge.com/mail2follow/?utm_source=reddit"
-    "&utm_medium=post&utm_campaign=animecatala) — si vius enganxat al Gmail, "
+    "&utm_medium=post&utm_campaign=animecatala&utm_content=recull-setmanal"
+    "&utm_term=anime) — si vius enganxat al Gmail, "
     "fes-hi una ullada 👀"
 )
