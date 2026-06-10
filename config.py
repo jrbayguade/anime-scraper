@@ -157,12 +157,12 @@ USE_LLM = bool(DEEPSEEK_API_KEY)
 # --------------------------------------------------------------------------- #
 # Si defineixes MAKE_WEBHOOK_URL, en acabar s'envia el JSON estructurat del
 # post a aquest webhook perquè make.com faci la revisió/publicació a Reddit.
+#
+# IMPORTANT: aquest webhook el comparteixen el recull setmanal (main.py) i la
+# graella de SX3 (sx3_schedule.py --push). L'escenari de make només té un pas
+# després del webhook —publicar a r/AnimeCatala—, així que qualsevol post per a
+# aquell canal pot reutilitzar-lo (make limita a 2 escenaris actius).
 MAKE_WEBHOOK_URL = os.getenv("MAKE_WEBHOOK_URL", "").strip()
-
-# Webhook SEPARAT per al post de la graella d'anime de SX3 (divendres). El fa
-# servir sx3_schedule.py --push; manté el flux de SX3 independent del recull
-# setmanal de notícies.
-SX3_MAKE_WEBHOOK_URL = os.getenv("SX3_MAKE_WEBHOOK_URL", "").strip()
 
 # El mòdul "Submit a Post" de make.com envia el text dins la URL i peta amb
 # 414 si supera el límit del servidor (~8 KB un cop codificat). Limitem el cos
