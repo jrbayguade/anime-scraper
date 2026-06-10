@@ -30,8 +30,9 @@ conté dues dates de calendari). Cada ítem porta: `titol`, `capitols[].desc`
     python sx3_schedule.py --push           # envia el post al webhook de make (→ Reddit)
     python sx3_schedule.py --debug          # estadístiques crues de l'API
 
-El cron de divendres executa `--push` (que arrenca a AVUI = divendres). Cal el
-secret SX3_MAKE_WEBHOOK_URL (i DEEPSEEK_API_KEY per a la intro).
+El cron de divendres executa `--push` (que arrenca a AVUI = divendres). Reutilitza
+el webhook MAKE_WEBHOOK_URL del recull setmanal (make limita a 2 escenaris actius),
+i DEEPSEEK_API_KEY per a la intro.
 """
 
 from __future__ import annotations
@@ -53,8 +54,10 @@ try:
     _HEADERS = config.HTTP_HEADERS
     _OUTPUT_DIR = config.OUTPUT_DIR
     _SUBREDDIT = getattr(config, "SUBREDDIT", "AnimeCatala")
-    _SX3_WEBHOOK = (getattr(config, "SX3_MAKE_WEBHOOK_URL", "")
-                    or os.getenv("SX3_MAKE_WEBHOOK_URL", "")).strip()
+    # Reutilitzem el MATEIX webhook que el recull setmanal: amb make limitat a 2
+    # escenaris, el post de SX3 passa per l'escenari d'anime ja existent.
+    _WEBHOOK = (getattr(config, "MAKE_WEBHOOK_URL", "")
+                or os.getenv("MAKE_WEBHOOK_URL", "")).strip()
 except Exception:  # pragma: no cover - el script ha de funcionar tot sol
     from pathlib import Path
     _HEADERS = {
@@ -67,7 +70,7 @@ except Exception:  # pragma: no cover - el script ha de funcionar tot sol
     }
     _OUTPUT_DIR = Path(__file__).resolve().parent / "output"
     _SUBREDDIT = "AnimeCatala"
-    _SX3_WEBHOOK = os.getenv("SX3_MAKE_WEBHOOK_URL", "").strip()
+    _WEBHOOK = os.getenv("MAKE_WEBHOOK_URL", "").strip()
 
 log = logging.getLogger("anime-scraper.sx3")
 
@@ -449,28 +452,30 @@ def build_post(progs: list[Programa], use_llm: bool = True) -> dict:
 # Publicació (webhook de make.com → Reddit)                                    #
 # --------------------------------------------------------------------------- #
 def build_structured(post: dict, progs: list[Programa]) -> dict:
-    """Dict estructurat que s'envia al webhook de make (que el penja a Reddit)."""
-    animes = [p for p in progs if p.anime]
+    """Dict per al webhook de make (que el penja a Reddit).
+
+    Fa servir les mateixes claus que el recull setmanal (`title`, `subreddit`,
+    `markdown`) perquè el MATEIX escenari de make les consumeixi. L'escenari
+    només té un pas després del webhook: publicar a r/AnimeCatala. Per tant
+    qualsevol post per a aquell canal pot anar per aquest webhook, sense cap
+    marcador ni router.
+    """
     first = progs[0].inici if progs else datetime.now()
     last = progs[-1].inici if progs else first
     return {
-        "type": "sx3-graella-anime",
         "generated_at": datetime.now().isoformat(timespec="seconds"),
-        "window_start": first.strftime("%Y-%m-%d"),
-        "window_end": last.strftime("%Y-%m-%d"),
+        "week_start": first.strftime("%Y-%m-%d"),
+        "week_end": last.strftime("%Y-%m-%d"),
         "subreddit": _SUBREDDIT,
         "title": post["title"],
         "markdown": post["markdown"],
-        "program_count": len(progs),
-        "anime_count": len(animes),
-        "source_url": f"{BASE_URL}/tv3/programacio/canal-sx3/",
     }
 
 
 def push_to_make(structured: dict, webhook_url: str) -> bool:
     """Envia el JSON al webhook de make. Retorna True si ha anat bé."""
     if not webhook_url:
-        log.error("Sense SX3_MAKE_WEBHOOK_URL: no hi ha on enviar el post.")
+        log.error("Sense MAKE_WEBHOOK_URL: no hi ha on enviar el post.")
         return False
     try:
         r = requests.post(webhook_url, json=structured, timeout=30)
@@ -501,7 +506,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--post", action="store_true",
                    help="Genera i imprimeix el post en Markdown (sense publicar).")
     p.add_argument("--push", action="store_true",
-                   help="Genera el post i l'envia al webhook de make (SX3_MAKE_WEBHOOK_URL).")
+                   help="Genera el post i l'envia al webhook de make (MAKE_WEBHOOK_URL).")
     p.add_argument("--no-llm", action="store_true",
                    help="Amb --post/--push, no cridis DeepSeek (intro estàtica, 0 tokens).")
     p.add_argument("--csv", default=None, help="Ruta del CSV de sortida.")
@@ -553,10 +558,10 @@ def main() -> int:
             return 0
         post = build_post(progs, use_llm=not args.no_llm)
         structured = build_structured(post, progs)
-        ok = push_to_make(structured, _SX3_WEBHOOK)
+        ok = push_to_make(structured, _WEBHOOK)
         print(f"TÍTOL: {post['title']}")
         print("✅ Enviat a make." if ok else
-              "❌ No enviat (revisa SX3_MAKE_WEBHOOK_URL).")
+              "❌ No enviat (revisa MAKE_WEBHOOK_URL).")
         return 0 if ok else 1
 
     # CSV (per defecte: TOTS els programes amb columna `anime` per verificar)

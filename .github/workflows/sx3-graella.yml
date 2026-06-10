@@ -10,7 +10,7 @@ on:
 
 # Evita execucions solapades
 concurrency:
-  group: sx3-weekend
+  group: sx3-graella
   cancel-in-progress: false
 
 jobs:
@@ -32,5 +32,6 @@ jobs:
       - name: Genera la graella d'anime i envia-la a make.com
         env:
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
-          SX3_MAKE_WEBHOOK_URL: ${{ secrets.SX3_MAKE_WEBHOOK_URL }}
+          # Reutilitza el webhook del recull setmanal (mateix escenari → r/AnimeCatala)
+          MAKE_WEBHOOK_URL: ${{ secrets.MAKE_WEBHOOK_URL }}
         run: python sx3_schedule.py --push --quiet
