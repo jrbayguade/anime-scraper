@@ -187,3 +187,18 @@ CAN_PUBLISH = all([
 # --------------------------------------------------------------------------- #
 SUBREDDIT = "AnimeCatala"   # Sense prefix "r/"
 POST_TIMEZONE = "Europe/Madrid"
+
+# --------------------------------------------------------------------------- #
+# Peu de promoció (opcional, DESACTIVAT per defecte)                           #
+# --------------------------------------------------------------------------- #
+# Quan vulguis promocionar un projecte propi al final del post, posa
+# FOOTER_PROMO_ENABLED = True i revisa el text/enllaç de sota.
+# Recomanació: deixa passar unes setmanes perquè el recull s'estableixi abans
+# d'activar-ho, i mantén un to honest i subtil (evita "patrocinat" en producte propi).
+FOOTER_PROMO_ENABLED = False
+FOOTER_PROMO_TEXT = (
+    "✍️ Fet per algú que també construeix "
+    "[Mail2Follow](https://www.zinkforge.com/mail2follow/?utm_source=reddit"
+    "&utm_medium=post&utm_campaign=animecatala) — si vius enganxat al Gmail, "
+    "fes-hi una ullada 👀"
+)

@@ -246,8 +246,11 @@ def build_post(items: list[NewsItem]) -> dict:
     fonts = " · ".join(s["name"] for s in config.SOURCES if s.get("enabled", True))
 
     def footer(extra: str = "") -> str:
+        promo = (f"\n*{config.FOOTER_PROMO_TEXT}*"
+                 if config.FOOTER_PROMO_ENABLED and config.FOOTER_PROMO_TEXT
+                 else "")
         return (f"\n{extra}---\n"
-                f"*🤖 Recull automàtic · Fonts: {fonts}*")
+                f"*🤖 Recull automàtic · Fonts: {fonts}*{promo}")
 
     included: list[NewsItem] = []
     if not items:
