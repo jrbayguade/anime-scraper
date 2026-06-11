@@ -171,6 +171,19 @@ MAKE_WEBHOOK_URL = os.getenv("MAKE_WEBHOOK_URL", "").strip()
 MAKE_BODY_MAX_ENCODED = 7500
 
 # --------------------------------------------------------------------------- #
+# Bluesky — novetats mensuals de manga (@samfainavisual)                       #
+# --------------------------------------------------------------------------- #
+# Compte de Bluesky d'on s'extreu el post mensual de "Llançaments de manga en
+# català". La detecció és determinista (frase fixa); DeepSeek (config DEEPSEEK_*
+# de més amunt) només actua de xarxa de seguretat acotada quan el filtre falla.
+BSKY_ACTOR = os.getenv("BSKY_ACTOR", "samfainavisual.bsky.social").strip()
+
+# Històric del flux de manga: {"uris": [...], "months": [...]}. Independent de
+# HISTORY_FILE (recull setmanal). `uris` evita repetir posts; `months` (YYYY-MM)
+# evita cridar la xarxa de seguretat LLM un cop el mes ja s'ha publicat.
+BSKY_HISTORY_FILE = OUTPUT_DIR / "bsky_history.json"
+
+# --------------------------------------------------------------------------- #
 # Reddit (publicació directa amb PRAW)                                          #
 # --------------------------------------------------------------------------- #
 # Credencials d'una "script app" creada a https://www.reddit.com/prefs/apps
