@@ -204,3 +204,95 @@ def build_structured(post_uri: str, month_year: str, image_url: str,
         "source_uri": post_uri,
         "month": month_year,
     }
+
+
+# --------------------------------------------------------------------------- #
+# Xarxa de seguretat amb DeepSeek (només si el filtre determinista falla)      #
+# --------------------------------------------------------------------------- #
+_LLM_SYSTEM_PROMPT = (
+    "Analitza la següent llista de posts (cadascun amb 'id' i 'text'). "
+    "Identifica quin correspon a l'anunci mensual de novetats de manga o anime "
+    "en català. Retorna exclusivament l'id d'aquest post en format JSON: "
+    '{"target_id": <id>}. Si cap post encaixa amb aquesta descripció, retorna '
+    '{"target_id": null}.'
+)
+
+
+def llm_candidates(feed: list[dict], now: datetime,
+                   max_age_days: int = MAX_AGE_DAYS) -> list[dict]:
+    """Posts recents NO-repost com a {id, uri, text}, per passar a l'LLM."""
+    cutoff = now - timedelta(days=max_age_days)
+    out: list[dict] = []
+    for item in feed:
+        if "reason" in item:
+            continue
+        post = item.get("post") or {}
+        record = post.get("record") or {}
+        try:
+            created = _parse_iso(record.get("createdAt", ""))
+        except (ValueError, AttributeError):
+            continue
+        if created < cutoff:
+            continue
+        out.append({"id": len(out) + 1, "uri": post.get("uri", ""),
+                    "text": record.get("text", "")})
+    return out
+
+
+def should_try_llm(now: datetime, history: dict,
+                   day_limit: int = LLM_DAY_LIMIT) -> bool:
+    """La xarxa de seguretat només actua a principi de mes i si encara no s'ha
+    publicat el post d'aquest mes (acota les crides a ~1-2/mes)."""
+    if now.day > day_limit:
+        return False
+    if now.strftime("%Y-%m") in history.get("months", set()):
+        return False
+    return True
+
+
+def select_post_by_uri(feed: list[dict], uri: str) -> Optional[dict]:
+    for item in feed:
+        post = item.get("post") or {}
+        if post.get("uri") == uri:
+            return post
+    return None
+
+
+def llm_select_monthly_post(feed: list[dict], now: datetime,
+                            use_llm: bool = True) -> Optional[dict]:
+    """Demana a DeepSeek quin post recent és l'anunci mensual. Retorna el `post`
+    o None. Si no hi ha clau / falla / no n'hi ha cap, retorna None (queda
+    determinista pur). Mateix patró de fallback que sx3_schedule."""
+    cands = llm_candidates(feed, now)
+    if not cands or not use_llm:
+        return None
+    try:
+        from processor import _deepseek_chat, _extract_json  # client del projecte
+    except Exception:
+        return None
+    listing = [{"id": c["id"], "text": c["text"]} for c in cands]
+    raw = _deepseek_chat(
+        [
+            {"role": "system", "content": _LLM_SYSTEM_PROMPT},
+            {"role": "user", "content":
+                "Posts:\n" + json.dumps(listing, ensure_ascii=False) +
+                "\n\nRespon NOMÉS amb el JSON indicat."},
+        ],
+        temperature=0, max_tokens=60,
+    )
+    data = _extract_json(raw) if raw else None
+    if not isinstance(data, dict):
+        return None
+    target = data.get("target_id")
+    if target is None:
+        return None
+    try:
+        target = int(target)
+    except (TypeError, ValueError):
+        return None
+    match = next((c for c in cands if c["id"] == target), None)
+    if not match:
+        return None
+    log.info("Xarxa de seguretat LLM: post triat id=%d (%s).",
+             target, match["uri"])
+    return select_post_by_uri(feed, match["uri"])

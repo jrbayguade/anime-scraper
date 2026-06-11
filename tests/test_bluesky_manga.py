@@ -92,3 +92,34 @@ def test_build_structured_has_image_contract():
     assert s["url"] == "https://cdn.bsky.app/fullsize/juny.jpg"
     assert s["title"].endswith("(via Samfaina Visual)")
     assert s["source_uri"] == "at://x/JUNY"
+
+
+def test_llm_candidates_excludes_reposts_and_old():
+    cands = bm.llm_candidates(load_feed(), NOW)
+    uris = [c["uri"] for c in cands]
+    # RANDOM (9 juny) i JUNY (3 juny) entren; MAIG (>35 dies) i reposts, no.
+    assert any(u.endswith("/RANDOM") for u in uris)
+    assert any(u.endswith("/JUNY") for u in uris)
+    assert not any("REPOST" in u for u in uris)
+    assert not any(u.endswith("/MAIG") for u in uris)
+    # Cada candidat porta un id enter i el text.
+    assert all(isinstance(c["id"], int) and "text" in c for c in cands)
+
+
+def test_should_try_llm_gating():
+    history = {"uris": set(), "months": set()}
+    early = datetime(2026, 6, 5, tzinfo=timezone.utc)
+    late = datetime(2026, 6, 20, tzinfo=timezone.utc)
+    # Principi de mes, mes no publicat → sí.
+    assert bm.should_try_llm(early, history) is True
+    # Passat el dia 14 → no.
+    assert bm.should_try_llm(late, history) is False
+    # Mes ja publicat → no, encara que sigui principi de mes.
+    assert bm.should_try_llm(early, {"uris": set(), "months": {"2026-06"}}) is False
+
+
+def test_select_post_by_uri():
+    feed = load_feed()
+    post = bm.select_post_by_uri(feed, post_by_uri(feed, "/JUNY")["uri"])
+    assert post["uri"].endswith("/JUNY")
+    assert bm.select_post_by_uri(feed, "at://inexistent") is None
