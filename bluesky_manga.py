@@ -174,3 +174,33 @@ def extract_image_url(post: dict) -> Optional[str]:
 def extract_post_uri(post: dict) -> str:
     """URI at:// del post (clau de dedup)."""
     return post.get("uri", "")
+
+
+# --------------------------------------------------------------------------- #
+# Construcció del post i payload per a make                                    #
+# --------------------------------------------------------------------------- #
+def build_title(month_year: str) -> str:
+    """Títol determinista del post de Reddit."""
+    return (f"📚 Llançaments de manga en català — {month_year} "
+            f"(via Samfaina Visual)")
+
+
+def build_structured(post_uri: str, month_year: str, image_url: str,
+                     now: Optional[datetime] = None) -> dict:
+    """Dict per al webhook de make (post d'IMATGE → r/AnimeCatala).
+
+    Reutilitza el webhook MAKE_WEBHOOK_URL del canal. `kind: "image"` indica a
+    make que publiqui un post d'imatge a partir de `url` (no un self post). Les
+    claus extra (source_*, month) les ignora make; serveixen per a traçabilitat.
+    """
+    now = now or datetime.now(timezone.utc)
+    return {
+        "generated_at": now.isoformat(timespec="seconds"),
+        "subreddit": _SUBREDDIT,
+        "title": build_title(month_year),
+        "kind": "image",
+        "url": image_url,
+        "source": "bluesky/samfainavisual",
+        "source_uri": post_uri,
+        "month": month_year,
+    }

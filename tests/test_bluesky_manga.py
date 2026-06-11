@@ -74,3 +74,21 @@ def test_extract_image_url_none_when_no_embed():
 def test_extract_post_uri():
     post = post_by_uri(load_feed(), "/JUNY")
     assert bm.extract_post_uri(post).endswith("/JUNY")
+
+
+def test_build_title():
+    assert bm.build_title("juny 2026") == (
+        "📚 Llançaments de manga en català — juny 2026 (via Samfaina Visual)"
+    )
+
+
+def test_build_structured_has_image_contract():
+    s = bm.build_structured(
+        "at://x/JUNY", "juny 2026", "https://cdn.bsky.app/fullsize/juny.jpg",
+        now=datetime(2026, 6, 10, tzinfo=timezone.utc),
+    )
+    assert s["subreddit"] == "AnimeCatala"
+    assert s["kind"] == "image"
+    assert s["url"] == "https://cdn.bsky.app/fullsize/juny.jpg"
+    assert s["title"].endswith("(via Samfaina Visual)")
+    assert s["source_uri"] == "at://x/JUNY"
