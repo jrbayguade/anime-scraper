@@ -434,7 +434,12 @@ def main() -> int:
 
     uri = extract_post_uri(post)
     record = post.get("record", {})
-    created = _parse_iso(record["createdAt"])
+    try:
+        created = _parse_iso(record.get("createdAt", ""))
+    except (ValueError, AttributeError):
+        log.warning("Post mensual trobat (%s) però sense data vàlida; no es publica.",
+                    uri)
+        return 0
     month_year = extract_month_year(record.get("text", ""), created)
     image_url = extract_image_url(post)
 
