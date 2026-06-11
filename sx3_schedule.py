@@ -467,6 +467,7 @@ def build_structured(post: dict, progs: list[Programa]) -> dict:
         "week_start": first.strftime("%Y-%m-%d"),
         "week_end": last.strftime("%Y-%m-%d"),
         "subreddit": _SUBREDDIT,
+        "kind": "self",
         "title": post["title"],
         "markdown": post["markdown"],
     }
