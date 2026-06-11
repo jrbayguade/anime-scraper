@@ -372,15 +372,116 @@ def push_to_make(structured: dict, webhook_url: str) -> bool:
 
 
 # --------------------------------------------------------------------------- #
+# Publicació manual assistida (sense make ni API; el bot prepara, tu postes)    #
+# --------------------------------------------------------------------------- #
+# Per quan la connexió de Reddit de make no funciona (o no es vol fer servir).
+# Copia el títol al porta-retalls, baixa la imatge a un fitxer i obre Reddit;
+# tu només enganxes el títol, puges la imatge i cliques Post. Mateix patró
+# (WSL → Windows) que publish_manual.py del recull setmanal.
+def _image_ext(content_type: str) -> str:
+    """Extensió de fitxer segons el Content-Type de la imatge (per defecte .jpg)."""
+    ct = (content_type or "").lower()
+    if "png" in ct:
+        return ".png"
+    if "webp" in ct:
+        return ".webp"
+    if "gif" in ct:
+        return ".gif"
+    return ".jpg"
+
+
+def download_image(url: str, dest_base):
+    """Baixa la imatge a `dest_base` + extensió segons el Content-Type. Retorna
+    el Path del fitxer desat, o None si falla."""
+    try:
+        r = requests.get(url, headers=_HEADERS, timeout=REQUEST_TIMEOUT)
+        r.raise_for_status()
+    except Exception as exc:  # noqa: BLE001
+        log.error("No s'ha pogut baixar la imatge: %s", exc)
+        return None
+    dest = dest_base.with_suffix(_image_ext(r.headers.get("Content-Type", "")))
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    dest.write_bytes(r.content)
+    return dest
+
+
+def _to_clipboard(text: str) -> bool:
+    """Posa `text` al porta-retalls de Windows des de WSL (robust amb accents)."""
+    try:
+        import subprocess
+        tmp = _OUTPUT_DIR / ".clipboard.tmp"
+        tmp.parent.mkdir(parents=True, exist_ok=True)
+        tmp.write_text(text, encoding="utf-8")
+        win = subprocess.check_output(["wslpath", "-w", str(tmp)]).decode().strip()
+        subprocess.run(
+            ["powershell.exe", "-NoProfile", "-Command",
+             f"Set-Clipboard -Value (Get-Content -Raw -Encoding UTF8 -LiteralPath '{win}')"],
+            check=True, stderr=subprocess.DEVNULL,
+        )
+        tmp.unlink(missing_ok=True)
+        return True
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def _open_browser(url: str) -> None:
+    try:
+        import subprocess
+        subprocess.run(["explorer.exe", url], stderr=subprocess.DEVNULL)
+    except Exception:  # noqa: BLE001
+        print(f"   (obre manualment: {url})")
+
+
+def _win_path(path) -> str:
+    """Ruta Windows d'un fitxer WSL (per trobar-lo al diàleg de pujada)."""
+    try:
+        import subprocess
+        return subprocess.check_output(["wslpath", "-w", str(path)]).decode().strip()
+    except Exception:  # noqa: BLE001
+        return str(path)
+
+
+def run_manual(structured: dict, image_url: str, month_year: str) -> int:
+    """Prepara el post d'imatge per publicar-lo a mà: copia el títol, baixa la
+    imatge i obre Reddit. No fa servir make ni l'API de Reddit."""
+    title = structured["title"]
+    slug = month_year.replace(" ", "-")
+    img = download_image(image_url, _OUTPUT_DIR / f"manga-{slug}")
+    ok_clip = _to_clipboard(title)
+    _open_browser(f"https://www.reddit.com/r/{_SUBREDDIT}/submit")
+
+    print("\n" + "=" * 66)
+    print("📋  TÍTOL " + ("(ja al porta-retalls → Ctrl+V al camp «Title»):"
+                          if ok_clip else "(copia'l al camp «Title»):"))
+    print("\n    " + title + "\n")
+    if img:
+        print("🖼️  IMATGE baixada — puja-la al post:")
+        print("    " + _win_path(img))
+    else:
+        print("🖼️  No s'ha pogut baixar la imatge. URL per desar-la a mà:")
+        print("    " + image_url)
+    print("\nPassos a Reddit (s'ha obert al navegador):")
+    print("   1) Tria  Type = Images & Video")
+    print("   2) Title → enganxa el títol (Ctrl+V)")
+    print("   3) Puja la imatge baixada (arrossega-la o tria el fitxer)")
+    print("   4) Clica  Post")
+    print("=" * 66)
+    return 0
+
+
+# --------------------------------------------------------------------------- #
 # CLI                                                                         #
 # --------------------------------------------------------------------------- #
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(
-        description="Novetats mensuals de manga (Bluesky → make → Reddit).")
+        description="Novetats mensuals de manga (Bluesky → make/Reddit).")
     p.add_argument("--post", action="store_true",
                    help="Preview del post (títol + URL d'imatge), sense publicar.")
     p.add_argument("--push", action="store_true",
                    help="Envia el post a make (MAKE_WEBHOOK_URL) i desa l'històric.")
+    p.add_argument("--manual", action="store_true",
+                   help="Publicació manual assistida: copia el títol, baixa la "
+                        "imatge i obre Reddit (sense make ni API).")
     p.add_argument("--no-llm", action="store_true",
                    help="Desactiva la xarxa de seguretat amb DeepSeek.")
     p.add_argument("--debug", action="store_true",
@@ -450,11 +551,16 @@ def main() -> int:
                     uri)
         return 0
 
-    if uri in history["uris"]:
+    # En mode manual no apliquem el dedup: el publiques tu quan vols.
+    if uri in history["uris"] and not args.manual:
         log.info("El post mensual %s ja s'havia processat; res a fer.", uri)
         return 0
 
     structured = build_structured(uri, month_year, image_url, now)
+
+    # Publicació manual assistida: prepara-ho tot i surt (no toca make ni històric).
+    if args.manual:
+        return run_manual(structured, image_url, month_year)
 
     # Preview (mode per defecte i --post): no publica.
     if not args.push:

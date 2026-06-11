@@ -227,8 +227,15 @@ Dilluns 09:00 UTC → GitHub Actions executa bluesky_manga.py --push
 python bluesky_manga.py --debug    # estadístiques crues del feed
 python bluesky_manga.py --post     # preview (títol + URL d'imatge), no publica
 python bluesky_manga.py --push     # publica a make si hi ha un post nou
+python bluesky_manga.py --manual   # publicació manual assistida (sense make)
 python bluesky_manga.py --no-llm --post   # només filtre determinista
 ```
+
+**Publicació manual (`--manual`):** si la connexió de Reddit de make no funciona,
+aquesta opció copia el **títol** al porta-retalls, baixa la **imatge** a
+`output/manga-<mes>.<ext>` i obre Reddit; tu enganxes el títol, puges la imatge i
+cliques **Post**. (La imatge de Bluesky sol ser **WebP**; si Reddit el rebutja,
+caldrà convertir-la a PNG/JPG.)
 
 **Secrets del workflow** (Settings → Secrets → Actions, ja compartits):
 `MAKE_WEBHOOK_URL` (sempre) i `DEEPSEEK_API_KEY` (només per a la xarxa de seguretat).
