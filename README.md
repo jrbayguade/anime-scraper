@@ -204,19 +204,51 @@ Fansubs.cat agrega **totes** les publicacions dels fansubs, incloent contingut
 +18. A `config.py`, la llista `SKIP_KEYWORDS` omet qualsevol notícia que contingui
 aquestes paraules. Edita-la segons el criteri de la comunitat.
 
+## 📚 Novetats mensuals de manga (Bluesky → Reddit)
+
+A banda del recull setmanal i la graella de SX3, `bluesky_manga.py` publica un cop
+al mes les **novetats de manga en català** que anuncia el compte de Bluesky
+[@samfainavisual](https://bsky.app/profile/samfainavisual.bsky.social), com a
+**post d'imatge** a r/AnimeCatala (títol + la imatge amb la llista de llançaments).
+
+```
+Dilluns 09:00 UTC → GitHub Actions executa bluesky_manga.py --push
+   → busca el post mensual al feed de Bluesky (filtre determinista)
+        → POST {kind:"image", url} al webhook de make → make publica a Reddit
+```
+
+- **Detecció sense soroll:** descarta reposts i busca la frase fixa
+  `LLANÇAMENTS MANGA EN CATALÀ` en posts recents (≤35 dies). Si el compte canviés
+  la redacció, hi ha una **xarxa de seguretat amb DeepSeek** que només s'activa a
+  principi de mes i si el mes encara no s'ha publicat (~1-2 crides/mes com a molt).
+- **Sense duplicats:** `output/bsky_history.json` recorda els posts ja publicats.
+
+```bash
+python bluesky_manga.py --debug    # estadístiques crues del feed
+python bluesky_manga.py --post     # preview (títol + URL d'imatge), no publica
+python bluesky_manga.py --push     # publica a make si hi ha un post nou
+python bluesky_manga.py --no-llm --post   # només filtre determinista
+```
+
+**Secrets del workflow** (Settings → Secrets → Actions, ja compartits):
+`MAKE_WEBHOOK_URL` (sempre) i `DEEPSEEK_API_KEY` (només per a la xarxa de seguretat).
+
 ## 📁 Estructura
 
 ```
 anime-scraper/
-├── main.py            # Orquestra tot el procés
-├── scraper.py         # Descàrrega i parsing de les fonts
-├── processor.py       # Resum (DeepSeek), post Markdown, JSON, històric
+├── main.py            # Orquestra el recull setmanal
+├── scraper.py         # Descàrrega i parsing de les fonts (recull)
+├── processor.py       # Resum (DeepSeek), post Markdown, JSON, històric (recull)
+├── sx3_schedule.py    # Graella d'anime de SX3 (divendres)
+├── bluesky_manga.py   # Novetats mensuals de manga des de Bluesky (dilluns)
 ├── config.py          # Configuració (fonts, delays, claus, filtres)
 ├── requirements.txt
 ├── run.sh / run.bat   # Executors per a Linux-Mac / Windows
 ├── .env.example       # Plantilla de variables d'entorn
 ├── output/
 │   ├── posts/         # Posts .md + latest.json
-│   └── history.json   # Notícies ja publicades
+│   ├── history.json   # Notícies ja publicades (recull setmanal)
+│   └── bsky_history.json  # Posts de manga ja publicats (Bluesky)
 └── logs/              # Logs per dia
 ```

@@ -7,7 +7,7 @@ tocar res relacionat amb la publicació.
 ## Què és
 
 Bot que prepara contingut d'anime en català i el publica a **r/AnimeCatala**.
-Té **dues sortides independents**, cadascuna amb el seu cron de GitHub Actions:
+Té **tres sortides independents**, cadascuna amb el seu cron de GitHub Actions:
 
 1. **Recull setmanal** (dilluns) — `main.py`. Fa webscraping de notícies d'anime
    (El Racó del Manga, Fansubs.cat, Anime Corner), les resumeix/tradueix amb
@@ -15,8 +15,12 @@ Té **dues sortides independents**, cadascuna amb el seu cron de GitHub Actions:
 2. **Graella de SX3** (divendres) — `sx3_schedule.py`. Agafa la graella del canal
    SX3 de 3Cat per al cap de setmana (divendres→dijous) i en munta un post amb
    els animes, una intro i una pregunta per generar comentaris.
+3. **Novetats de manga** (dilluns) — `bluesky_manga.py`. Un cop al mes, agafa el
+   post de "Llançaments de manga en català" del compte de Bluesky @samfainavisual
+   i el publica com a **post d'imatge** (títol + URL). Detecció determinista; amb
+   una **xarxa de seguretat DeepSeek acotada** si el filtre per frase falla.
 
-Totes dues acaben enviant un JSON al **mateix webhook de make.com**, que és qui
+Totes tres acaben enviant un JSON al **mateix webhook de make.com**, que és qui
 publica a Reddit.
 
 ## ⚠️ Com es publica a Reddit (FONAMENTAL)
@@ -36,7 +40,7 @@ Implicacions importants:
   només té **un pas després del webhook: publicar a r/AnimeCatala**. Per tant
   **qualsevol post per a aquell canal pot reutilitzar el mateix webhook**
   (`MAKE_WEBHOOK_URL`), sense escenaris nous, sense routers i sense marcadors de
-  tipus. Tant el recull setmanal com la graella de SX3 hi envien.
+  tipus. El recull setmanal, la graella de SX3 i les novetats de manga hi envien.
 
 ### Contracte del webhook
 
@@ -44,8 +48,12 @@ Envia un JSON a `MAKE_WEBHOOK_URL` amb (com a mínim) aquestes claus, que és el
 que l'escenari mapeja:
 
 ```json
-{ "subreddit": "AnimeCatala", "title": "…", "markdown": "… (cos del post) …" }
+{ "subreddit": "AnimeCatala", "kind": "self", "title": "…", "markdown": "… (cos del post) …" }
 ```
+
+El camp **`kind`** indica el tipus de post a Reddit:
+- `"self"` → post de text (recull setmanal i graella de SX3): mapeja `markdown`.
+- `"image"` → post d'imatge (novetats de manga): mapeja `url` (sense `markdown`).
 
 `markdown` és el cos complet del post (ja muntat). Hi pot haver més claus; make
 ignora les que no mapeja.
@@ -67,6 +75,7 @@ horaris (no una línia per episodi) i queda molt per sota del límit (~3 KB).
 | `publisher.py` | Publicació directa amb PRAW. **Heretat / sense ús** (vegeu secció de Reddit). |
 | `main.py` | Punt d'entrada del recull setmanal. |
 | `sx3_schedule.py` | Graella d'anime de SX3 (autònom): API de 3Cat → post Markdown + DeepSeek → `--push` a make. |
+| `bluesky_manga.py` | Novetats mensuals de manga (autònom): feed de Bluesky → selecció determinista (+xarxa DeepSeek acotada) → `--push` a make com a post d'imatge. |
 
 ## Font de dades de SX3
 
@@ -88,6 +97,28 @@ https://api.3cat.cat/graellatvfutur?_format=json&canal=CAD_SX3
 El filtre d'anime és per paraules clau (`ANIME_KEYWORDS` a `sx3_schedule.py`),
 calibrable. Avui detecta sobretot Bola de drac, Viatges Pokémon i El detectiu Conan.
 
+## Font de dades de novetats de manga (Bluesky)
+
+API pública de Bluesky, sense autenticació (`requests` pur):
+
+```
+https://public.api.bsky.app/xrpc/app.bsky.feed.getAuthorFeed
+    ?actor=samfainavisual.bsky.social&limit=50&filter=posts_no_replies
+```
+
+- Cada ítem de `feed` és `{"post": {...}, "reason"?: {...}}`. Si porta `reason`,
+  és una **repost** (es descarta).
+- Camps: `post.uri` (clau de dedup), `post.record.text`, `post.record.createdAt`
+  (ISO 8601), `post.embed.images[0].fullsize` (imatge).
+- **Detecció determinista**: el post mensual conté la frase fixa
+  `LLANÇAMENTS MANGA EN CATALÀ` i ha de ser recent (≤35 dies). El títol de Reddit
+  es genera amb plantilla; el mes surt de `DEL MES DE <MES>` al text.
+- **Xarxa de seguretat (DeepSeek)**: si el filtre no troba res i som dins dels
+  primers 14 dies del mes sense haver-lo publicat, es demana a DeepSeek que triï
+  entre els textos recents (~1-2 crides/mes com a molt). `--no-llm` la desactiva.
+- L'històric és `output/bsky_history.json` (`{uris, months}`), independent del
+  del recull setmanal.
+
 ## DeepSeek (opcional)
 
 S'usa per als resums/traduccions del recull setmanal i per a la intro + pregunta
@@ -105,10 +136,11 @@ Si no hi ha `DEEPSEEK_API_KEY`, tot funciona igual amb un fallback estàtic.
 |---|---|---|
 | `.github/workflows/weekly-roundup.yml` | dilluns 08:00 UTC | `python main.py` (recull setmanal) |
 | `.github/workflows/sx3-graella.yml` | divendres 08:50 UTC | `python sx3_schedule.py --push --quiet` |
+| `.github/workflows/manga-novetats.yml` | dilluns 09:00 UTC | `python bluesky_manga.py --push --quiet` (novetats de manga) |
 
-Tots dos tenen `workflow_dispatch` (botó **Run workflow** per provar-los a mà).
+Tots tres tenen `workflow_dispatch` (botó **Run workflow** per provar-los a mà).
 **Secrets necessaris** (Settings ▸ Secrets ▸ Actions): `DEEPSEEK_API_KEY` i
-`MAKE_WEBHOOK_URL` (compartit per tots dos fluxos).
+`MAKE_WEBHOOK_URL` (compartits pels tres fluxos).
 
 > Nota DST: el cron de GitHub és sempre UTC. 08:50 UTC = 09:50 a l'hivern /
 > 10:50 a l'estiu a Catalunya. No es pot fixar l'hora local tot l'any amb un sol cron.
@@ -125,6 +157,12 @@ python sx3_schedule.py --from-next-friday   # finestra real dv→dj (CSV + previ
 python sx3_schedule.py --post               # imprimeix el post Markdown (no publica)
 python sx3_schedule.py --push               # envia el post a make (→ Reddit)
 python sx3_schedule.py --debug              # estadístiques crues de l'API
+
+# Novetats de manga (Bluesky)
+python bluesky_manga.py --debug             # estadístiques crues del feed
+python bluesky_manga.py --post              # preview (títol + URL d'imatge)
+python bluesky_manga.py --push              # publica a make si hi ha post nou
+python bluesky_manga.py --no-llm --post     # només filtre determinista
 ```
 
 ## Convencions
