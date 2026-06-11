@@ -158,14 +158,23 @@ python main.py --no-llm                # sense DeepSeek (extractes en brut)
 python sx3_schedule.py --from-next-friday   # finestra real dv→dj (CSV + preview)
 python sx3_schedule.py --post               # imprimeix el post Markdown (no publica)
 python sx3_schedule.py --push               # envia el post a make (→ Reddit)
+python sx3_schedule.py --from-next-friday --manual  # publicació manual assistida (sense make)
 python sx3_schedule.py --debug              # estadístiques crues de l'API
 
 # Novetats de manga (Bluesky)
 python bluesky_manga.py --debug             # estadístiques crues del feed
 python bluesky_manga.py --post              # preview (títol + URL d'imatge)
 python bluesky_manga.py --push              # publica a make si hi ha post nou
+python bluesky_manga.py --manual            # publicació manual assistida (sense make)
 python bluesky_manga.py --no-llm --post     # només filtre determinista
 ```
+
+> **Publicació manual (`--manual`):** quan la connexió de Reddit de make no
+> funciona, `bluesky_manga.py --manual` copia el títol al porta-retalls, baixa la
+> imatge a `output/manga-<mes>.<ext>` i obre Reddit; tu enganxes el títol, puges
+> la imatge i cliques Post. Equivalent a `publish_manual.py` del recull setmanal.
+> (La imatge de Bluesky sol venir en **WebP**; si Reddit el rebutja, cal
+> convertir-la a PNG/JPG.)
 
 ## Convencions
 
