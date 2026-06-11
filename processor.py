@@ -314,6 +314,7 @@ def build_post(items: list[NewsItem]) -> dict:
         "week_start": week_start.strftime("%Y-%m-%d"),
         "week_end": week_end.strftime("%Y-%m-%d"),
         "subreddit": config.SUBREDDIT,
+        "kind": "self",
         "title": title,
         "item_count": len(items),
         "body_item_count": len(included),
