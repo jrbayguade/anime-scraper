@@ -284,7 +284,7 @@ def llm_select_monthly_post(feed: list[dict], now: datetime,
     if not isinstance(data, dict):
         return None
     target = data.get("target_id")
-    if target is None:
+    if target is None or isinstance(target, bool):
         return None
     try:
         target = int(target)
