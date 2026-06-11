@@ -160,3 +160,17 @@ def month_key(month_year: str) -> str:
     name, _, year = month_year.partition(" ")
     num = _MONTHS_CA.index(name) + 1   # name és un mes vàlid (ve d'extract_month_year)
     return f"{year}-{num:02d}"
+
+
+def extract_image_url(post: dict) -> Optional[str]:
+    """URL `fullsize` de la primera imatge del post, o None si no en té."""
+    embed = post.get("embed") or {}
+    images = embed.get("images") or []
+    if images:
+        return images[0].get("fullsize") or None
+    return None
+
+
+def extract_post_uri(post: dict) -> str:
+    """URI at:// del post (clau de dedup)."""
+    return post.get("uri", "")
