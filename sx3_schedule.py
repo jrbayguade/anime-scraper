@@ -489,11 +489,67 @@ def push_to_make(structured: dict, webhook_url: str) -> bool:
 
 
 # --------------------------------------------------------------------------- #
+# Publicació manual assistida (sense make ni API; el bot prepara, tu postes)    #
+# --------------------------------------------------------------------------- #
+# Per quan la connexió de Reddit de make no funciona. Copia el cos del post al
+# porta-retalls i obre Reddit; tu enganxes el títol i el cos i cliques Post.
+# Mateix patró (WSL → Windows) que publish_manual.py i bluesky_manga.py --manual.
+def _to_clipboard(text: str) -> bool:
+    """Posa `text` al porta-retalls de Windows des de WSL (robust amb accents)."""
+    try:
+        import subprocess
+        tmp = _OUTPUT_DIR / ".clipboard.tmp"
+        tmp.parent.mkdir(parents=True, exist_ok=True)
+        tmp.write_text(text, encoding="utf-8")
+        win = subprocess.check_output(["wslpath", "-w", str(tmp)]).decode().strip()
+        subprocess.run(
+            ["powershell.exe", "-NoProfile", "-Command",
+             f"Set-Clipboard -Value (Get-Content -Raw -Encoding UTF8 -LiteralPath '{win}')"],
+            check=True, stderr=subprocess.DEVNULL,
+        )
+        tmp.unlink(missing_ok=True)
+        return True
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def _open_browser(url: str) -> None:
+    try:
+        import subprocess
+        subprocess.run(["explorer.exe", url], stderr=subprocess.DEVNULL)
+    except Exception:  # noqa: BLE001
+        print(f"   (obre manualment: {url})")
+
+
+def run_manual(post: dict) -> int:
+    """Prepara el post de TEXT per publicar-lo a mà: copia el cos i obre Reddit.
+    No fa servir make ni l'API de Reddit (i sense límit de llargada del 414)."""
+    title = post["title"]
+    body = post["markdown"]
+    ok = _to_clipboard(body)
+    _open_browser(f"https://www.reddit.com/r/{_SUBREDDIT}/submit")
+    print("\n" + "=" * 66)
+    print("📋  TÍTOL (copia'l al camp «Title»):\n")
+    print("    " + title + "\n")
+    if ok:
+        print("✅  El COS del post ja és al porta-retalls → Ctrl+V al quadre de text.")
+    else:
+        print("⚠️  No s'ha pogut copiar sol; copia el cos del preview de dalt.")
+    print("\nPassos a Reddit (s'ha obert al navegador):")
+    print("   1) Tria  Type = Text")
+    print("   2) Title → enganxa el títol d'aquí dalt")
+    print("   3) Body  → Ctrl+V")
+    print("   4) Clica  Post")
+    print("=" * 66)
+    return 0
+
+
+# --------------------------------------------------------------------------- #
 # CLI                                                                         #
 # --------------------------------------------------------------------------- #
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(
-        description="Graella d'anime de SX3: verifica (CSV/preview) o publica (--push a make).")
+        description="Graella d'anime de SX3: verifica (CSV/preview) o publica (--push/--manual).")
     p.add_argument("--days", type=int, default=7,
                    help="Nombre de dies de la finestra (per defecte 7: dv→dj).")
     p.add_argument("--from-next-friday", action="store_true",
@@ -508,6 +564,9 @@ def parse_args() -> argparse.Namespace:
                    help="Genera i imprimeix el post en Markdown (sense publicar).")
     p.add_argument("--push", action="store_true",
                    help="Genera el post i l'envia al webhook de make (MAKE_WEBHOOK_URL).")
+    p.add_argument("--manual", action="store_true",
+                   help="Publicació manual assistida: copia el cos i obre Reddit "
+                        "(sense make ni API).")
     p.add_argument("--no-llm", action="store_true",
                    help="Amb --post/--push, no cridis DeepSeek (intro estàtica, 0 tokens).")
     p.add_argument("--csv", default=None, help="Ruta del CSV de sortida.")
@@ -564,6 +623,14 @@ def main() -> int:
         print("✅ Enviat a make." if ok else
               "❌ No enviat (revisa MAKE_WEBHOOK_URL).")
         return 0 if ok else 1
+
+    # Mode manual: prepara el post de text per publicar-lo a mà (sense make).
+    if args.manual:
+        if n_anime == 0:
+            print("⚠️  Cap programa d'anime en aquesta finestra; res a preparar.")
+            return 0
+        post = build_post(progs, use_llm=not args.no_llm)
+        return run_manual(post)
 
     # CSV (per defecte: TOTS els programes amb columna `anime` per verificar)
     if not args.no_csv:
