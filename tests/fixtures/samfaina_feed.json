@@ -1,0 +1,90 @@
+{
+  "feed": [
+    {
+      "post": {
+        "uri": "at://did:plc:xf2/app.bsky.feed.post/RANDOM",
+        "cid": "bafyrandom",
+        "record": {
+          "$type": "app.bsky.feed.post",
+          "text": "Així comença \"Fullmetal Alchemist\" en CATALÀ!",
+          "createdAt": "2026-06-09T10:00:00.000Z",
+          "langs": ["ca"]
+        }
+      }
+    },
+    {
+      "post": {
+        "uri": "at://did:plc:xf2/app.bsky.feed.post/REPOSTJULIOL",
+        "cid": "bafyjuliol",
+        "record": {
+          "$type": "app.bsky.feed.post",
+          "text": "🗓️ LLANÇAMENTS MANGA EN CATALÀ DEL MES DE JULIOL!",
+          "createdAt": "2026-06-08T10:00:00.000Z",
+          "langs": ["ca"]
+        },
+        "embed": {
+          "$type": "app.bsky.embed.images#view",
+          "images": [
+            {"thumb": "x", "fullsize": "https://cdn.bsky.app/fullsize/juliol.jpg", "alt": ""}
+          ]
+        }
+      },
+      "reason": {"$type": "app.bsky.feed.defs#reasonRepost"}
+    },
+    {
+      "post": {
+        "uri": "at://did:plc:xf2/app.bsky.feed.post/JUNY",
+        "cid": "bafyjuny",
+        "record": {
+          "$type": "app.bsky.feed.post",
+          "text": "🗓️ LLANÇAMENTS MANGA EN CATALÀ DEL MES DE JUNY!  \n\nAquests son els 6 mangues que sortiran aquest mes en la nostra llengua:",
+          "createdAt": "2026-06-03T12:33:27.666Z",
+          "langs": ["ca"]
+        },
+        "embed": {
+          "$type": "app.bsky.embed.images#view",
+          "images": [
+            {"thumb": "https://cdn.bsky.app/thumb/juny.jpg", "fullsize": "https://cdn.bsky.app/fullsize/juny.jpg", "alt": "", "aspectRatio": {"width": 1080, "height": 1350}}
+          ]
+        }
+      }
+    },
+    {
+      "post": {
+        "uri": "at://did:plc:zse/app.bsky.feed.post/PLANETA",
+        "cid": "bafyplaneta",
+        "record": {
+          "$type": "app.bsky.feed.post",
+          "text": "Novedades de Planeta Cómic: manga en castellano y catalán.",
+          "createdAt": "2026-05-06T16:00:21.000Z",
+          "langs": ["es"]
+        },
+        "embed": {
+          "$type": "app.bsky.embed.images#view",
+          "images": [
+            {"thumb": "x", "fullsize": "https://cdn.bsky.app/fullsize/planeta.jpg", "alt": ""}
+          ]
+        }
+      },
+      "reason": {"$type": "app.bsky.feed.defs#reasonRepost"}
+    },
+    {
+      "post": {
+        "uri": "at://did:plc:xf2/app.bsky.feed.post/MAIG",
+        "cid": "bafymaig",
+        "record": {
+          "$type": "app.bsky.feed.post",
+          "text": "🗓️ LLANÇAMENTS MANGA EN CATALÀ DEL MES DE MAIG!\n\nSakura 7 - Ja disponible",
+          "createdAt": "2026-05-04T09:36:07.843Z",
+          "langs": ["ca"]
+        },
+        "embed": {
+          "$type": "app.bsky.embed.images#view",
+          "images": [
+            {"thumb": "x", "fullsize": "https://cdn.bsky.app/fullsize/maig.jpg", "alt": ""}
+          ]
+        }
+      }
+    }
+  ]
+}
