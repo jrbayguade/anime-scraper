@@ -40,7 +40,7 @@ Implicacions importants:
   només té **un pas després del webhook: publicar a r/AnimeCatala**. Per tant
   **qualsevol post per a aquell canal pot reutilitzar el mateix webhook**
   (`MAKE_WEBHOOK_URL`), sense escenaris nous, sense routers i sense marcadors de
-  tipus. Tant el recull setmanal com la graella de SX3 hi envien.
+  tipus. El recull setmanal, la graella de SX3 i les novetats de manga hi envien.
 
 ### Contracte del webhook
 
@@ -138,9 +138,9 @@ Si no hi ha `DEEPSEEK_API_KEY`, tot funciona igual amb un fallback estàtic.
 | `.github/workflows/sx3-graella.yml` | divendres 08:50 UTC | `python sx3_schedule.py --push --quiet` |
 | `.github/workflows/manga-novetats.yml` | dilluns 09:00 UTC | `python bluesky_manga.py --push --quiet` (novetats de manga) |
 
-Tots dos tenen `workflow_dispatch` (botó **Run workflow** per provar-los a mà).
+Tots tres tenen `workflow_dispatch` (botó **Run workflow** per provar-los a mà).
 **Secrets necessaris** (Settings ▸ Secrets ▸ Actions): `DEEPSEEK_API_KEY` i
-`MAKE_WEBHOOK_URL` (compartit per tots dos fluxos).
+`MAKE_WEBHOOK_URL` (compartits pels tres fluxos).
 
 > Nota DST: el cron de GitHub és sempre UTC. 08:50 UTC = 09:50 a l'hivern /
 > 10:50 a l'estiu a Catalunya. No es pot fixar l'hora local tot l'any amb un sol cron.
