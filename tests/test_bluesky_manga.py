@@ -39,3 +39,23 @@ def test_respects_recency_window():
     # Molt al futur: tots els matches queden fora dels 35 dies.
     far = datetime(2026, 8, 1, tzinfo=timezone.utc)
     assert bm.select_monthly_post(load_feed(), far) is None
+
+
+def test_extract_month_year_from_text():
+    created = datetime(2026, 6, 3, tzinfo=timezone.utc)
+    assert bm.extract_month_year("DEL MES DE JUNY!", created) == "juny 2026"
+
+
+def test_extract_month_year_handles_accented_month():
+    created = datetime(2026, 3, 1, tzinfo=timezone.utc)
+    assert bm.extract_month_year("...DEL MES DE MARÇ!", created) == "març 2026"
+
+
+def test_extract_month_year_falls_back_to_createdat():
+    created = datetime(2026, 5, 4, tzinfo=timezone.utc)
+    assert bm.extract_month_year("sense mes al text", created) == "maig 2026"
+
+
+def test_month_key():
+    assert bm.month_key("juny 2026") == "2026-06"
+    assert bm.month_key("març 2026") == "2026-03"
