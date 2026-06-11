@@ -88,7 +88,7 @@ def test_build_structured_has_image_contract():
         now=datetime(2026, 6, 10, tzinfo=timezone.utc),
     )
     assert s["subreddit"] == "AnimeCatala"
-    assert s["kind"] == "image"
+    assert s["tipus"] == "imatge"
     assert s["url"] == "https://cdn.bsky.app/fullsize/juny.jpg"
     assert s["title"].endswith("(via Samfaina Visual)")
     assert s["source_uri"] == "at://x/JUNY"

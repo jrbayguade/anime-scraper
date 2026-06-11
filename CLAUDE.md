@@ -48,12 +48,14 @@ Envia un JSON a `MAKE_WEBHOOK_URL` amb (com a mínim) aquestes claus, que és el
 que l'escenari mapeja:
 
 ```json
-{ "subreddit": "AnimeCatala", "kind": "self", "title": "…", "markdown": "… (cos del post) …" }
+{ "subreddit": "AnimeCatala", "tipus": "text", "title": "…", "markdown": "… (cos del post) …" }
 ```
 
-El camp **`kind`** indica el tipus de post a Reddit:
-- `"self"` → post de text (recull setmanal i graella de SX3): mapeja `markdown`.
-- `"image"` → post d'imatge (novetats de manga): mapeja `url` (sense `markdown`).
+El camp **`tipus`** governa un **router** dins de make (el mòdul de Reddit no
+accepta posts d'imatge amb URL+text barrejats, així que cal encaminar):
+- `"text"` → post de text (recull setmanal i graella de SX3): mapeja `markdown`.
+- `"imatge"` → post d'imatge (novetats de manga): mapeja `url` (sense `markdown`,
+  només `title` + `url`).
 
 `markdown` és el cos complet del post (ja muntat). Hi pot haver més claus; make
 ignora les que no mapeja.

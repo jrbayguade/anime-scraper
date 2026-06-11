@@ -214,7 +214,7 @@ al mes les **novetats de manga en català** que anuncia el compte de Bluesky
 ```
 Dilluns 09:00 UTC → GitHub Actions executa bluesky_manga.py --push
    → busca el post mensual al feed de Bluesky (filtre determinista)
-        → POST {kind:"image", url} al webhook de make → make publica a Reddit
+        → POST {tipus:"imatge", url} al webhook de make → router → publica a Reddit
 ```
 
 - **Detecció sense soroll:** descarta reposts i busca la frase fixa
