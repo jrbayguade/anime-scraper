@@ -123,3 +123,11 @@ def test_select_post_by_uri():
     post = bm.select_post_by_uri(feed, post_by_uri(feed, "/JUNY")["uri"])
     assert post["uri"].endswith("/JUNY")
     assert bm.select_post_by_uri(feed, "at://inexistent") is None
+
+
+def test_image_ext_from_content_type():
+    assert bm._image_ext("image/png") == ".png"
+    assert bm._image_ext("image/jpeg") == ".jpg"
+    assert bm._image_ext("image/webp; charset=binary") == ".webp"
+    assert bm._image_ext("image/gif") == ".gif"
+    assert bm._image_ext("") == ".jpg"
