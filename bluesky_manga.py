@@ -13,7 +13,8 @@ llançaments de manga en català del mes, amb una imatge. Aquest script:
      recents. Si no hi ha clau o falla, queda determinista pur.
   4. Comprova que no s'hagi publicat ja (històric d'URIs).
   5. Envia un post d'IMATGE a make (mateix webhook del canal) amb
-     {subreddit, title, kind: "image", url}. make el penja a r/AnimeCatala.
+     {subreddit, title, tipus: "imatge", url}. Un router de make encamina segons
+     `tipus` ("text"/"imatge") cap al mòdul de Reddit corresponent.
 
 ── Font de dades ──────────────────────────────────────────────────────────────
     https://public.api.bsky.app/xrpc/app.bsky.feed.getAuthorFeed
@@ -189,16 +190,17 @@ def build_structured(post_uri: str, month_year: str, image_url: str,
                      now: Optional[datetime] = None) -> dict:
     """Dict per al webhook de make (post d'IMATGE → r/AnimeCatala).
 
-    Reutilitza el webhook MAKE_WEBHOOK_URL del canal. `kind: "image"` indica a
-    make que publiqui un post d'imatge a partir de `url` (no un self post). Les
-    claus extra (source_*, month) les ignora make; serveixen per a traçabilitat.
+    Reutilitza el webhook MAKE_WEBHOOK_URL del canal. `tipus: "imatge"` fa que el
+    router de make encamini cap al mòdul de post d'imatge (a partir de `url`), en
+    comptes del de text (`tipus: "text"`, que mapeja `markdown`). Les claus extra
+    (source_*, month) les ignora make; serveixen per a traçabilitat.
     """
     now = now or datetime.now(timezone.utc)
     return {
         "generated_at": now.isoformat(timespec="seconds"),
         "subreddit": _SUBREDDIT,
         "title": build_title(month_year),
-        "kind": "image",
+        "tipus": "imatge",
         "url": image_url,
         "source": "bluesky/samfainavisual",
         "source_uri": post_uri,
