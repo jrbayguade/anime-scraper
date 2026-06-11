@@ -296,3 +296,176 @@ def llm_select_monthly_post(feed: list[dict], now: datetime,
     log.info("Xarxa de seguretat LLM: post triat id=%d (%s).",
              target, match["uri"])
     return select_post_by_uri(feed, match["uri"])
+
+
+# --------------------------------------------------------------------------- #
+# IO: feed, històric, make                                                     #
+# --------------------------------------------------------------------------- #
+def build_session() -> requests.Session:
+    s = requests.Session()
+    s.headers.update(_HEADERS)
+    return s
+
+
+def fetch_feed(session: requests.Session, actor: str,
+               limit: int = FEED_LIMIT) -> list[dict]:
+    """Baixa el feed de l'autor. Llança RuntimeError si tots els intents fallen."""
+    params = {"actor": actor, "limit": str(limit), "filter": "posts_no_replies"}
+    last_exc: Optional[Exception] = None
+    for attempt in range(1, REQUEST_RETRIES + 2):
+        try:
+            r = session.get(API_URL, params=params, timeout=REQUEST_TIMEOUT)
+            r.raise_for_status()
+            feed = r.json().get("feed", []) or []
+            log.info("Feed de @%s: %d ítems.", actor, len(feed))
+            return feed
+        except (requests.RequestException, ValueError) as exc:
+            last_exc = exc
+            log.warning("Petició al feed fallida (%d/%d): %s",
+                        attempt, REQUEST_RETRIES + 1, exc)
+    raise RuntimeError(f"No s'ha pogut descarregar el feed de Bluesky: {last_exc}")
+
+
+def load_history() -> dict:
+    """Retorna {'uris': set, 'months': set}. Tolera el format antic (llista)."""
+    if not _HISTORY_FILE.exists():
+        return {"uris": set(), "months": set()}
+    try:
+        data = json.loads(_HISTORY_FILE.read_text(encoding="utf-8"))
+    except Exception:  # noqa: BLE001
+        return {"uris": set(), "months": set()}
+    if isinstance(data, list):                       # format antic: només URIs
+        return {"uris": set(data), "months": set()}
+    return {"uris": set(data.get("uris", [])),
+            "months": set(data.get("months", []))}
+
+
+def update_history(uri: str, month: str) -> None:
+    """Afegeix l'URI publicada i el mes (YYYY-MM) a l'històric."""
+    _HISTORY_FILE.parent.mkdir(parents=True, exist_ok=True)
+    history = load_history()
+    history["uris"].add(uri)
+    history["months"].add(month)
+    _HISTORY_FILE.write_text(
+        json.dumps({"uris": sorted(history["uris"]),
+                    "months": sorted(history["months"])},
+                   ensure_ascii=False, indent=0),
+        encoding="utf-8",
+    )
+
+
+def push_to_make(structured: dict, webhook_url: str) -> bool:
+    """Envia el JSON al webhook de make. Retorna True si ha anat bé."""
+    if not webhook_url:
+        log.error("Sense MAKE_WEBHOOK_URL: no hi ha on enviar el post.")
+        return False
+    try:
+        r = requests.post(webhook_url, json=structured, timeout=30)
+        r.raise_for_status()
+        log.info("✅ Post enviat al webhook de make (HTTP %s).", r.status_code)
+        return True
+    except Exception as exc:  # noqa: BLE001
+        log.error("No s'ha pogut enviar a make: %s", exc)
+        return False
+
+
+# --------------------------------------------------------------------------- #
+# CLI                                                                         #
+# --------------------------------------------------------------------------- #
+def parse_args() -> argparse.Namespace:
+    p = argparse.ArgumentParser(
+        description="Novetats mensuals de manga (Bluesky → make → Reddit).")
+    p.add_argument("--post", action="store_true",
+                   help="Preview del post (títol + URL d'imatge), sense publicar.")
+    p.add_argument("--push", action="store_true",
+                   help="Envia el post a make (MAKE_WEBHOOK_URL) i desa l'històric.")
+    p.add_argument("--no-llm", action="store_true",
+                   help="Desactiva la xarxa de seguretat amb DeepSeek.")
+    p.add_argument("--debug", action="store_true",
+                   help="Estadístiques crues del feed i surt.")
+    p.add_argument("--quiet", action="store_true", help="Menys missatges.")
+    return p.parse_args()
+
+
+def main() -> int:
+    args = parse_args()
+    logging.basicConfig(
+        level=logging.WARNING if args.quiet else logging.INFO,
+        format="%(levelname)-7s | %(message)s",
+    )
+
+    session = build_session()
+    try:
+        feed = fetch_feed(session, _ACTOR)
+    except RuntimeError as exc:
+        log.error("%s", exc)
+        return 1
+
+    if args.debug:
+        print(f"\n[DEBUG] Feed de @{_ACTOR}: {len(feed)} ítems")
+        reposts = sum(1 for i in feed if "reason" in i)
+        matches = sum(
+            1 for i in feed
+            if "reason" not in i
+            and NEEDLE in (i.get("post", {}).get("record", {}).get("text", "")).upper()
+        )
+        print(f"[DEBUG] reposts: {reposts} · matches no-repost: {matches}")
+        for i in feed[:10]:
+            rec = i.get("post", {}).get("record", {})
+            tag = "REPOST" if "reason" in i else "post  "
+            print(f"  {rec.get('createdAt','')[:10]} | {tag} | "
+                  f"{(rec.get('text','') or '')[:60]!r}")
+        return 0
+
+    now = datetime.now(timezone.utc)
+    history = load_history()
+
+    # 1) Filtre determinista (primari).
+    post = select_monthly_post(feed, now)
+    # 2) Xarxa de seguretat LLM (secundària i acotada).
+    if not post and not args.no_llm and should_try_llm(now, history):
+        log.info("Cap match determinista; provo la xarxa de seguretat amb DeepSeek…")
+        post = llm_select_monthly_post(feed, now, use_llm=True)
+
+    if not post:
+        log.info("Cap post mensual de novetats al feed (normal la majoria de "
+                 "setmanes).")
+        return 0
+
+    uri = extract_post_uri(post)
+    record = post.get("record", {})
+    created = _parse_iso(record["createdAt"])
+    month_year = extract_month_year(record.get("text", ""), created)
+    image_url = extract_image_url(post)
+
+    if not image_url:
+        log.warning("Post mensual trobat (%s) però sense imatge; no es publica.",
+                    uri)
+        return 0
+
+    if uri in history["uris"]:
+        log.info("El post mensual %s ja s'havia processat; res a fer.", uri)
+        return 0
+
+    structured = build_structured(uri, month_year, image_url, now)
+
+    # Preview (mode per defecte i --post): no publica.
+    if not args.push:
+        print("\n" + "=" * 64)
+        print(f"TÍTOL: {structured['title']}")
+        print(f"IMATGE: {structured['url']}")
+        print(f"URI:   {uri}")
+        print("=" * 64)
+        return 0
+
+    # Publicació: només actualitzem l'històric si make respon bé.
+    if push_to_make(structured, _WEBHOOK):
+        update_history(uri, month_key(month_year))
+        log.info("✅ Publicat i desat a l'històric: %s", uri)
+        return 0
+    log.error("❌ No s'ha pogut enviar a make; no s'actualitza l'històric.")
+    return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
