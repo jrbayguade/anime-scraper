@@ -59,3 +59,18 @@ def test_extract_month_year_falls_back_to_createdat():
 def test_month_key():
     assert bm.month_key("juny 2026") == "2026-06"
     assert bm.month_key("març 2026") == "2026-03"
+
+
+def test_extract_image_url_returns_fullsize():
+    post = post_by_uri(load_feed(), "/JUNY")
+    assert bm.extract_image_url(post) == "https://cdn.bsky.app/fullsize/juny.jpg"
+
+
+def test_extract_image_url_none_when_no_embed():
+    post = post_by_uri(load_feed(), "/RANDOM")
+    assert bm.extract_image_url(post) is None
+
+
+def test_extract_post_uri():
+    post = post_by_uri(load_feed(), "/JUNY")
+    assert bm.extract_post_uri(post).endswith("/JUNY")
