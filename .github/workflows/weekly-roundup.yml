@@ -39,18 +39,6 @@ jobs:
           MAKE_WEBHOOK_URL: ${{ secrets.MAKE_WEBHOOK_URL }}
         run: python main.py
 
-      - name: Desa l'històric (per no repetir notícies la setmana vinent)
+      - name: Desa l'històric i la cua (resistent a curses)
         if: always()
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add -f output/history.json || true
-          git add -f output/posts/*.md 2>/dev/null || true
-          git add -f queue/ 2>/dev/null || true
-          if git diff --cached --quiet; then
-            echo "Res nou a desar."
-          else
-            git pull --rebase --autostash || true
-            git commit -m "chore: històric + cua del recull setmanal [skip ci]"
-            git push
-          fi
+        run: bash scripts/sync_queue.sh "chore: històric + cua del recull setmanal [skip ci]" output/history.json "output/posts/*.md"
