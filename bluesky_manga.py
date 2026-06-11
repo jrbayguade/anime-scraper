@@ -132,3 +132,31 @@ def select_monthly_post(feed: list[dict], now: datetime,
         return None
     candidates.sort(key=lambda c: c[0], reverse=True)
     return candidates[0][1]
+
+
+# --------------------------------------------------------------------------- #
+# Extracció de dades del post                                                 #
+# --------------------------------------------------------------------------- #
+_MONTH_RE = re.compile(r"DEL\s+MES\s+DE\s+([^\s!.,;:\n]+)", re.IGNORECASE)
+
+
+def extract_month_year(text: str, created: datetime) -> str:
+    """'… DEL MES DE JUNY!' + createdAt 2026 → 'juny 2026'.
+
+    El mes ve del text si hi és i és un mes vàlid; si no, del `createdAt`.
+    L'any sempre ve del `createdAt` (el post surt a l'inici del mes que cobreix).
+    """
+    month = _MONTHS_CA[created.month - 1]
+    m = _MONTH_RE.search(text or "")
+    if m:
+        candidate = m.group(1).strip().lower()
+        if candidate in _MONTHS_CA:
+            month = candidate
+    return f"{month} {created.year}"
+
+
+def month_key(month_year: str) -> str:
+    """'juny 2026' → '2026-06' (clau de gating per a la xarxa de seguretat)."""
+    name, _, year = month_year.partition(" ")
+    num = _MONTHS_CA.index(name) + 1   # name és un mes vàlid (ve d'extract_month_year)
+    return f"{year}-{num:02d}"
