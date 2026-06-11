@@ -1,0 +1,57 @@
+name: Manga · Novetats mensuals (dilluns)
+
+# Quan s'executa:
+on:
+  schedule:
+    # Cada DILLUNS a les 09:00 UTC (10:00 hivern / 11:00 estiu, hora de Catalunya).
+    # Una hora després del recull setmanal (08:00) per no col·lidir amb el seu push.
+    # El filtre de duplicats fa la majoria d'execucions idempotents (no publiquen res).
+    - cron: "0 9 * * 1"
+  workflow_dispatch: {}   # botó per executar-lo a mà des de la pestanya "Actions"
+
+# Permís perquè el job pugui desar l'històric (output/bsky_history.json) al repo
+permissions:
+  contents: write
+
+# Evita execucions solapades
+concurrency:
+  group: manga-novetats
+  cancel-in-progress: false
+
+jobs:
+  novetats:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Descarrega el codi
+        uses: actions/checkout@v4
+
+      - name: Prepara Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Instal·la dependències
+        run: pip install -r requirements.txt
+
+      - name: Cerca el post mensual i, si n'hi ha de nou, publica'l a make.com
+        env:
+          # Reutilitza el webhook del canal (mateix escenari → r/AnimeCatala).
+          MAKE_WEBHOOK_URL: ${{ secrets.MAKE_WEBHOOK_URL }}
+          # Només per a la xarxa de seguretat (si el filtre determinista falla).
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+        run: python bluesky_manga.py --push --quiet
+
+      - name: Desa l'històric (per no repetir el post el mes vinent)
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -f output/bsky_history.json || true
+          if git diff --cached --quiet; then
+            echo "Res nou a desar."
+          else
+            git pull --rebase --autostash || true
+            git commit -m "chore: històric de novetats de manga [skip ci]"
+            git push
+          fi
