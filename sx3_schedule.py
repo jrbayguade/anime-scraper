@@ -74,6 +74,14 @@ except Exception:  # pragma: no cover - el script ha de funcionar tot sol
 
 log = logging.getLogger("anime-scraper.sx3")
 
+# Cua per a l'extensió de Chrome (substitueix make.com). Import tolerant perquè
+# el script pugui seguir funcionant tot sol si algun dia es copia fora del repo.
+try:
+    import queue_store
+    _HAS_QUEUE = True
+except Exception:  # pragma: no cover
+    _HAS_QUEUE = False
+
 # --------------------------------------------------------------------------- #
 # Configuració                                                                #
 # --------------------------------------------------------------------------- #
@@ -618,10 +626,10 @@ def main() -> int:
             return 0
         post = build_post(progs, use_llm=not args.no_llm)
         structured = build_structured(post, progs)
-        ok = push_to_make(structured, _WEBHOOK)
+        ok = bool(queue_store.enqueue(structured)) if _HAS_QUEUE else False
         print(f"TÍTOL: {post['title']}")
-        print("✅ Enviat a make." if ok else
-              "❌ No enviat (revisa MAKE_WEBHOOK_URL).")
+        print("✅ Encuat per a l'extensió." if ok else
+              "❌ No encuat (queue_store no disponible).")
         return 0 if ok else 1
 
     # Mode manual: prepara el post de text per publicar-lo a mà (sense make).

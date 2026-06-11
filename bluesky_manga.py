@@ -571,12 +571,13 @@ def main() -> int:
         print("=" * 64)
         return 0
 
-    # Publicació: només actualitzem l'històric si make respon bé.
-    if push_to_make(structured, _WEBHOOK):
+    # Publicació: encua el post i, si s'ha encuat bé, actualitza l'històric.
+    import queue_store
+    if queue_store.enqueue(structured):
         update_history(uri, month_key(month_year))
-        log.info("✅ Publicat i desat a l'històric: %s", uri)
+        log.info("✅ Encuat per a l'extensió i desat a l'històric: %s", uri)
         return 0
-    log.error("❌ No s'ha pogut enviar a make; no s'actualitza l'històric.")
+    log.error("❌ No s'ha pogut encuar; no s'actualitza l'històric.")
     return 1
 
 

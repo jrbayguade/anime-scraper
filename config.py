@@ -48,6 +48,9 @@ LOGS_DIR = BASE_DIR / "logs"
 HISTORY_FILE = OUTPUT_DIR / "history.json"
 LATEST_JSON = POSTS_DIR / "latest.json"
 
+# Cua de posts pendents que l'extensió de Chrome llegeix (substitueix make.com).
+QUEUE_DIR = BASE_DIR / "queue"
+
 # --------------------------------------------------------------------------- #
 # Comportament de l'scraping                                                   #
 # --------------------------------------------------------------------------- #

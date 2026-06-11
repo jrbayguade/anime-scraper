@@ -22,6 +22,7 @@ from datetime import datetime
 
 import config
 import processor
+import queue_store
 from scraper import scrape_all
 
 
@@ -85,8 +86,8 @@ def main() -> int:
     structured = processor.build_post(items)
     md_path, json_path = processor.save_outputs(structured)
 
-    # 5) Enviament opcional a make.com
-    processor.push_to_make(structured)
+    # 5) Encua el post perquè l'extensió de Chrome el publiqui
+    queue_store.enqueue(structured)
 
     # 6) Actualitza l'històric
     if items:
@@ -95,7 +96,7 @@ def main() -> int:
     print("\n" + "=" * 60)
     print(f"✅ Post generat: {md_path}")
     print(f"   Notícies incloses: {structured['item_count']}")
-    print(f"   JSON per a make.com: {json_path}")
+    print(f"   Encuat per a l'extensió: queue/index.json (font: {json_path})")
     if not config.USE_LLM:
         print("   ⚠️  Sense DeepSeek: resums en brut (afegeix DEEPSEEK_API_KEY al .env).")
     print("=" * 60)
