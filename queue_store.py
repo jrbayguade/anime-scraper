@@ -119,3 +119,51 @@ def enqueue(payload: dict) -> str:
 
     log.info("Encuat %s (r/%s) → %s", item_id, payload.get("subreddit", "?"), fname)
     return item_id
+
+
+def rebuild_index() -> int:
+    """Reconstrueix queue/index.json a partir de TOTS els payloads presents a
+    queue/. Pensat per resoldre curses entre workflows concurrents: cada item és
+    un fitxer de nom únic (mai col·lisiona), així que l'índex sempre es pot
+    derivar de la unió de fitxers sense un merge manual. Retorna el nombre d'items.
+    """
+    qdir = _queue_dir()
+    items: list[dict] = []
+    for f in sorted(qdir.glob("*.json")):
+        if f.name == "index.json":
+            continue
+        try:
+            payload = json.loads(f.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            continue
+        tipus = payload.get("tipus", "text")
+        created = payload.get("generated_at") or _now_iso()
+        items.append({
+            "id": f"{tipus}-{created}",
+            "tipus": tipus,
+            "title": payload.get("title", ""),
+            "subreddit": payload.get("subreddit", ""),
+            "created_at": created,
+            "file": f"queue/{f.name}",
+            "has_comment": bool(payload.get("comment_markdown")),
+        })
+
+    cutoff = datetime.now(timezone.utc) - timedelta(days=RETENTION_DAYS)
+    kept = []
+    for it in items:
+        try:
+            if _parse(it["created_at"]) >= cutoff:
+                kept.append(it)
+        except (ValueError, TypeError):
+            kept.append(it)
+    kept.sort(key=lambda it: it.get("created_at", ""))
+
+    (qdir / "index.json").write_text(
+        json.dumps(
+            {"version": INDEX_VERSION, "updated_at": _now_iso(), "items": kept},
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    return len(kept)
