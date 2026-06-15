@@ -41,4 +41,5 @@ jobs:
 
       - name: Desa l'històric i la cua (resistent a curses)
         if: always()
-        run: bash scripts/sync_queue.sh "chore: històric + cua del recull setmanal [skip ci]" output/history.json "output/posts/*.md"
+        run: |
+          bash scripts/sync_queue.sh "chore: històric + cua del recull setmanal [skip ci]" output/history.json "output/posts/*.md"

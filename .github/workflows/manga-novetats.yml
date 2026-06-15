@@ -44,4 +44,5 @@ jobs:
 
       - name: Desa l'històric i la cua (resistent a curses)
         if: always()
-        run: bash scripts/sync_queue.sh "chore: històric + cua de novetats de manga [skip ci]" output/bsky_history.json
+        run: |
+          bash scripts/sync_queue.sh "chore: històric + cua de novetats de manga [skip ci]" output/bsky_history.json

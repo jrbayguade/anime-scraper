@@ -40,4 +40,5 @@ jobs:
 
       - name: Desa la cua (resistent a curses)
         if: always()
-        run: bash scripts/sync_queue.sh "chore: cua de la graella SX3 [skip ci]"
+        run: |
+          bash scripts/sync_queue.sh "chore: cua de la graella SX3 [skip ci]"
