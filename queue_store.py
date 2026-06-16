@@ -54,8 +54,63 @@ def _parse(dt_str: str) -> datetime:
     return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
 
 
+def _enqueue_worker(payload: dict) -> str:
+    """Publica el payload a la cua privada del Cloudflare Worker (POST /enqueue).
+
+    Mapeja el contracte intern (amb 'generated_at') al del Worker (amb
+    'created_at') i hi afegeix 'source'/'source_label' perquè l'extensió agrupi
+    per pack. Retorna l'id que assigna el Worker.
+    """
+    import urllib.request
+    import urllib.error
+
+    body = {
+        "tipus": payload.get("tipus", "text"),
+        "title": payload.get("title", ""),
+        "subreddit": payload.get("subreddit", ""),
+        "source": getattr(config, "QUEUE_SOURCE", "anime"),
+        "source_label": getattr(config, "QUEUE_SOURCE_LABEL", "anime"),
+        "created_at": payload.get("generated_at") or _now_iso(),
+    }
+    if payload.get("markdown"):
+        body["markdown"] = payload["markdown"]
+    if payload.get("url"):
+        body["url"] = payload["url"]
+    if payload.get("comment_markdown"):
+        body["comment_markdown"] = payload["comment_markdown"]
+
+    data = json.dumps(body, ensure_ascii=False).encode("utf-8")
+    req = urllib.request.Request(
+        config.WORKER_URL + "/enqueue",
+        data=data,
+        method="POST",
+        headers={
+            "Content-Type": "application/json",
+            "Authorization": "Bearer " + config.WORKER_WRITE_TOKEN,
+        },
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=20) as resp:
+            out = json.loads(resp.read().decode("utf-8"))
+    except urllib.error.HTTPError as e:
+        detail = e.read().decode("utf-8", "replace")
+        raise RuntimeError(f"Worker /enqueue HTTP {e.code}: {detail}") from e
+
+    item_id = out.get("id", "")
+    log.info("Encuat al Worker %s (r/%s) com a font '%s'.",
+             item_id, body["subreddit"], body["source"])
+    return item_id
+
+
 def enqueue(payload: dict) -> str:
-    """Desa un payload a la cua i actualitza l'índex. Retorna l'id de l'item."""
+    """Desa un payload a la cua i retorna l'id de l'item.
+
+    Si el Worker està configurat (WORKER_URL + WORKER_WRITE_TOKEN), publica-hi i
+    prou — res no toca queue/ ni GitHub. Si no, escriu fitxers a queue/ (legacy).
+    """
+    if getattr(config, "WORKER_URL", "") and getattr(config, "WORKER_WRITE_TOKEN", ""):
+        return _enqueue_worker(payload)
+
     qdir = _queue_dir()
 
     tipus = payload.get("tipus", "text")

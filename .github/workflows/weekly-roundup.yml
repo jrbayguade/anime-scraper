@@ -37,6 +37,9 @@ jobs:
         env:
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
           MAKE_WEBHOOK_URL: ${{ secrets.MAKE_WEBHOOK_URL }}
+          # Cua privada al Cloudflare Worker (substitueix la cua pública de GitHub).
+          WORKER_URL: ${{ secrets.WORKER_URL }}
+          WORKER_WRITE_TOKEN: ${{ secrets.WORKER_WRITE_TOKEN }}
         run: python main.py
 
       - name: Desa l'històric i la cua (resistent a curses)

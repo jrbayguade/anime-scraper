@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Race-safe commit & push of queue/ (+ optional extra state files) to origin/main.
+# Race-safe commit & push of optional STATE files (history, posts) to origin/main.
 #
-# Several scheduled or manually-triggered workflows can write queue/index.json at
-# the same time. Item payload files are uniquely named (never conflict); only
-# index.json does. Since index.json is fully derivable from the item files, on any
-# push race we rebase onto origin/main and, if index.json conflicts, rebuild it
-# from the union of item files and continue. A retry loop absorbs the push race.
+# The Reddit post queue NO LONGER lives in git — it goes to the private Cloudflare
+# Worker (queue_store.enqueue → POST /enqueue). So this script only syncs the extra
+# state files passed as arguments (e.g. output/history.json, output/posts/*.md).
+# If no extra paths are given (e.g. the SX3 workflow, which only ever wrote the
+# queue), there is nothing to commit and it exits cleanly.
 #
 # Usage: scripts/sync_queue.sh "<commit message>" [extra git-add path]...
 set -uo pipefail
@@ -15,7 +15,6 @@ MSG="${1:?cal un missatge de commit}"; shift || true
 git config user.name "github-actions[bot]"
 git config user.email "github-actions[bot]@users.noreply.github.com"
 
-git add -f queue/ 2>/dev/null || true
 for p in "$@"; do
   # shellcheck disable=SC2086  (intentional glob expansion, e.g. output/posts/*.md)
   git add -f $p 2>/dev/null || true
@@ -34,12 +33,7 @@ for attempt in 1 2 3 4 5; do
   fi
   echo "↻ Push rebutjat; sincronitzant amb origin/main (intent $attempt)…"
   git fetch --quiet origin main || true
-  if ! git rebase origin/main; then
-    echo "  Conflicte (segurament queue/index.json) → reconstrueixo l'índex des dels items."
-    python -c "import queue_store; print('items:', queue_store.rebuild_index())"
-    git add -A queue/
-    GIT_EDITOR=true git rebase --continue || { git rebase --abort || true; echo "  rebase avortat, reintento"; }
-  fi
+  git rebase origin/main || { git rebase --abort || true; echo "  rebase avortat, reintento"; }
   sleep $(( (RANDOM % 4) + 2 ))
 done
 
