@@ -87,6 +87,12 @@ def _enqueue_worker(payload: dict) -> str:
         headers={
             "Content-Type": "application/json",
             "Authorization": "Bearer " + config.WORKER_WRITE_TOKEN,
+            # Sense un User-Agent realista, Cloudflare veta la signatura per
+            # defecte d'urllib ('Python-urllib/x.y') amb un 403 «error code: 1010».
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+            ),
         },
     )
     try:
