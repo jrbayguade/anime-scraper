@@ -15,7 +15,7 @@ Té **quatre sortides independents**, cadascuna amb el seu cron de GitHub Action
 2. **Graella de SX3** (divendres) — `sx3_schedule.py`. Agafa la graella del canal
    SX3 de 3Cat per al cap de setmana (divendres→dijous) i en munta un post amb
    els animes, una intro i una pregunta per generar comentaris.
-3. **Novetats de manga** (dilluns) — `bluesky_manga.py`. Un cop al mes, agafa el
+3. **Novetats de manga** (dimarts) — `bluesky_manga.py`. Un cop al mes, agafa el
    post de "Llançaments de manga en català" del compte de Bluesky @samfainavisual
    i el publica com a **post d'imatge** (títol + URL). Detecció determinista; amb
    una **xarxa de seguretat DeepSeek acotada** si el filtre per frase falla.
@@ -146,7 +146,7 @@ Si no hi ha `DEEPSEEK_API_KEY`, tot funciona igual amb un fallback estàtic.
 |---|---|---|
 | `.github/workflows/weekly-roundup.yml` | dilluns 08:00 UTC | `python main.py` (recull setmanal) |
 | `.github/workflows/sx3-graella.yml` | divendres 08:50 UTC | `python sx3_schedule.py --push --quiet` |
-| `.github/workflows/manga-novetats.yml` | dilluns 09:00 UTC | `python bluesky_manga.py --push --quiet` (novetats de manga) |
+| `.github/workflows/manga-novetats.yml` | dimarts 09:00 UTC | `python bluesky_manga.py --push --quiet` (novetats de manga) |
 | `.github/workflows/endevina-anime.yml` | dimecres i dissabte 18:00 UTC | `python endevina_anime.py --push --quiet` (joc otaku) |
 
 Tots tres tenen `workflow_dispatch` (botó **Run workflow** per provar-los a mà).

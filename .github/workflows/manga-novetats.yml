@@ -1,12 +1,13 @@
-name: Manga · Novetats mensuals (dilluns)
+name: Manga · Novetats mensuals (dimarts)
 
 # Quan s'executa:
 on:
   schedule:
-    # Cada DILLUNS a les 09:00 UTC (10:00 hivern / 11:00 estiu, hora de Catalunya).
-    # Una hora després del recull setmanal (08:00) per no col·lidir amb el seu push.
+    # Cada DIMARTS a les 09:00 UTC (10:00 hivern / 11:00 estiu, hora de Catalunya).
+    # En dimarts (no dilluns) per repartir: el recull setmanal va dilluns i així
+    # no s'acumulen dues actions el mateix dia.
     # El filtre de duplicats fa la majoria d'execucions idempotents (no publiquen res).
-    - cron: "0 9 * * 1"
+    - cron: "0 9 * * 2"
   workflow_dispatch: {}   # botó per executar-lo a mà des de la pestanya "Actions"
 
 # Permís perquè el job pugui desar l'històric (output/bsky_history.json) al repo
