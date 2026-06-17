@@ -7,7 +7,7 @@ tocar res relacionat amb la publicació.
 ## Què és
 
 Bot que prepara contingut d'anime en català i el publica a **r/AnimeCatala**.
-Té **tres sortides independents**, cadascuna amb el seu cron de GitHub Actions:
+Té **quatre sortides independents**, cadascuna amb el seu cron de GitHub Actions:
 
 1. **Recull setmanal** (dilluns) — `main.py`. Fa webscraping de notícies d'anime
    (El Racó del Manga, Fansubs.cat, Anime Corner), les resumeix/tradueix amb
@@ -19,8 +19,15 @@ Té **tres sortides independents**, cadascuna amb el seu cron de GitHub Actions:
    post de "Llançaments de manga en català" del compte de Bluesky @samfainavisual
    i el publica com a **post d'imatge** (títol + URL). Detecció determinista; amb
    una **xarxa de seguretat DeepSeek acotada** si el filtre per frase falla.
+4. **Endevina-ho, otaku!** (dimecres i dissabte) — `endevina_anime.py`. Joc per
+   endevinar coses d'anime/manga: demana a DeepSeek una endevinalla d'una
+   **categoria rotativa** (personatge, sèrie, autor/a, estudi, opening, cita,
+   època, trivia) i la munta com a post de text amb la solució amagada amb el
+   **spoiler de Reddit** (`>!resposta!<`). Encua a la cua del Worker via
+   `queue_store` (com la graella i les novetats). Sense fallback estàtic: si
+   DeepSeek no respon, el procés acaba amb error (workflow vermell).
 
-Totes tres acaben enviant un JSON al **mateix webhook de make.com**, que és qui
+Les altres tres acaben enviant un JSON al **mateix webhook de make.com**, que és qui
 publica a Reddit.
 
 ## ⚠️ Com es publica a Reddit (FONAMENTAL)
@@ -78,6 +85,7 @@ horaris (no una línia per episodi) i queda molt per sota del límit (~3 KB).
 | `main.py` | Punt d'entrada del recull setmanal. |
 | `sx3_schedule.py` | Graella d'anime de SX3 (autònom): API de 3Cat → post Markdown + DeepSeek → `--push` a make. |
 | `bluesky_manga.py` | Novetats mensuals de manga (autònom): feed de Bluesky → selecció determinista (+xarxa DeepSeek acotada) → `--push` a make com a post d'imatge. |
+| `endevina_anime.py` | Joc «Endevina-ho, otaku!» (autònom): categoria rotativa + DeepSeek → post de text amb solució amb spoiler → cua del Worker. |
 
 ## Font de dades de SX3
 
@@ -139,6 +147,7 @@ Si no hi ha `DEEPSEEK_API_KEY`, tot funciona igual amb un fallback estàtic.
 | `.github/workflows/weekly-roundup.yml` | dilluns 08:00 UTC | `python main.py` (recull setmanal) |
 | `.github/workflows/sx3-graella.yml` | divendres 08:50 UTC | `python sx3_schedule.py --push --quiet` |
 | `.github/workflows/manga-novetats.yml` | dilluns 09:00 UTC | `python bluesky_manga.py --push --quiet` (novetats de manga) |
+| `.github/workflows/endevina-anime.yml` | dimecres i dissabte 18:00 UTC | `python endevina_anime.py --push --quiet` (joc otaku) |
 
 Tots tres tenen `workflow_dispatch` (botó **Run workflow** per provar-los a mà).
 **Secrets necessaris** (Settings ▸ Secrets ▸ Actions): `DEEPSEEK_API_KEY` i
@@ -167,6 +176,10 @@ python bluesky_manga.py --post              # preview (títol + URL d'imatge)
 python bluesky_manga.py --push              # publica a make si hi ha post nou
 python bluesky_manga.py --manual            # publicació manual assistida (sense make)
 python bluesky_manga.py --no-llm --post     # només filtre determinista
+
+# Joc «Endevina-ho, otaku!»
+python endevina_anime.py --post             # preview del joc (no encua res)
+python endevina_anime.py --push             # genera i encua a la cua del Worker
 ```
 
 > **Publicació manual (`--manual`):** quan la connexió de Reddit de make no

@@ -1,0 +1,49 @@
+name: Endevina · joc otaku (dimecres i dissabte)
+
+# Quan s'executa:
+on:
+  schedule:
+    # Dimecres i dissabte a les 18:00 UTC (omple els buits: el recull és dilluns
+    # i la graella SX3 divendres). El cron de GitHub és sempre UTC; com a la
+    # resta del repo, l'hora local varia ±1h amb el canvi d'hora.
+    # Format cron: minut hora dia-mes mes dia-setmana  (https://crontab.guru)
+    - cron: "0 18 * * 3,6"
+  workflow_dispatch: {}   # botó per executar-lo a mà des de la pestanya "Actions"
+
+# Permís perquè el job pugui desar la cua (queue/) al repo
+permissions:
+  contents: write
+
+# Evita execucions solapades
+concurrency:
+  group: endevina-anime
+  cancel-in-progress: false
+
+jobs:
+  endevina:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Descarrega el codi
+        uses: actions/checkout@v4
+
+      - name: Prepara Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Instal·la dependències
+        run: pip install -r requirements.txt
+
+      - name: Genera el joc «Endevina-ho, otaku!» i encua'l per a l'extensió
+        env:
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          # Cua privada al Cloudflare Worker (substitueix la cua pública de GitHub).
+          WORKER_URL: ${{ secrets.WORKER_URL }}
+          WORKER_WRITE_TOKEN: ${{ secrets.WORKER_WRITE_TOKEN }}
+        run: python endevina_anime.py --push --quiet
+
+      - name: Desa la cua (resistent a curses)
+        if: always()
+        run: |
+          bash scripts/sync_queue.sh "chore: cua del joc otaku [skip ci]"
