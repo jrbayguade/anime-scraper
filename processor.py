@@ -47,10 +47,25 @@ def date_ca_year(d: datetime) -> str:
 # DeepSeek (resum + traducció)                                                 #
 # --------------------------------------------------------------------------- #
 def _deepseek_chat(messages: list[dict], *, temperature: float = 0.4,
-                   max_tokens: int = 2000) -> str | None:
-    """Crida l'API de DeepSeek (compatible amb OpenAI). Retorna el text o None."""
+                   max_tokens: int = 2000, json_mode: bool = False) -> str | None:
+    """Crida l'API de DeepSeek (compatible amb OpenAI). Retorna el text o None.
+
+    Amb `json_mode=True` s'activa el mode JSON de DeepSeek
+    (`response_format={"type": "json_object"}`), que garanteix una resposta JSON
+    sintàcticament vàlida (cometes i salts de línia ben escapats). Requereix que
+    el prompt demani explícitament JSON (la paraula «json» hi ha de sortir).
+    """
     if not config.USE_LLM:
         return None
+    payload = {
+        "model": config.DEEPSEEK_MODEL,
+        "messages": messages,
+        "temperature": temperature,
+        "max_tokens": max_tokens,
+        "stream": False,
+    }
+    if json_mode:
+        payload["response_format"] = {"type": "json_object"}
     try:
         resp = requests.post(
             f"{config.DEEPSEEK_BASE_URL}/chat/completions",
@@ -58,13 +73,7 @@ def _deepseek_chat(messages: list[dict], *, temperature: float = 0.4,
                 "Authorization": f"Bearer {config.DEEPSEEK_API_KEY}",
                 "Content-Type": "application/json",
             },
-            json={
-                "model": config.DEEPSEEK_MODEL,
-                "messages": messages,
-                "temperature": temperature,
-                "max_tokens": max_tokens,
-                "stream": False,
-            },
+            json=payload,
             timeout=60,
         )
         resp.raise_for_status()

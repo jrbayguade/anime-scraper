@@ -115,7 +115,8 @@ def generar_joc(avui: date, use_llm: bool = True) -> tuple[str, str, str] | None
             {"role": "user", "content": _user_prompt(label, instruccio, avui)},
         ],
         temperature=1.15,
-        max_tokens=700,
+        max_tokens=900,   # marge perquè una pista en markdown no quedi tallada
+        json_mode=True,   # força JSON vàlid (escapa salts de línia/cometes del markdown)
     )
     if not raw:
         return None
