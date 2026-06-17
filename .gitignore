@@ -6,3 +6,5 @@ logs/*.log
 output/posts/*.md
 output/posts/latest.json
 output/history.json
+# La cua ja no es publica a GitHub: va a la cua privada del Cloudflare Worker.
+queue/

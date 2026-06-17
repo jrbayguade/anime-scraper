@@ -36,6 +36,9 @@ jobs:
       - name: Genera la graella d'anime i encua-la per a l'extensió
         env:
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          # Cua privada al Cloudflare Worker (substitueix la cua pública de GitHub).
+          WORKER_URL: ${{ secrets.WORKER_URL }}
+          WORKER_WRITE_TOKEN: ${{ secrets.WORKER_WRITE_TOKEN }}
         run: python sx3_schedule.py --push --quiet
 
       - name: Desa la cua (resistent a curses)

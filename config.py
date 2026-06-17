@@ -48,8 +48,16 @@ LOGS_DIR = BASE_DIR / "logs"
 HISTORY_FILE = OUTPUT_DIR / "history.json"
 LATEST_JSON = POSTS_DIR / "latest.json"
 
-# Cua de posts pendents que l'extensió de Chrome llegeix (substitueix make.com).
+# Cua de posts pendents que l'extensió de Chrome llegeix.
+# Camí PRIVAT (preferent): si WORKER_URL i WORKER_WRITE_TOKEN estan definits,
+# queue_store.enqueue() publica al Cloudflare Worker via POST /enqueue i NO
+# escriu res a queue/ (per tant no es puja la cua a GitHub). Si no, fa el camí
+# antic d'escriure fitxers a queue/ (fallback local / tests offline).
 QUEUE_DIR = BASE_DIR / "queue"
+WORKER_URL = os.getenv("WORKER_URL", "").strip().rstrip("/")
+WORKER_WRITE_TOKEN = os.getenv("WORKER_WRITE_TOKEN", "").strip()
+QUEUE_SOURCE = os.getenv("QUEUE_SOURCE", "anime").strip()
+QUEUE_SOURCE_LABEL = os.getenv("QUEUE_SOURCE_LABEL", "Anime Català").strip()
 
 # --------------------------------------------------------------------------- #
 # Comportament de l'scraping                                                   #
