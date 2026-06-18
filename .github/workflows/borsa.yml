@@ -11,6 +11,11 @@ on:
     - cron: "0 4 * * 2-6"
   workflow_dispatch: {}   # botó per executar-lo a mà des de la pestanya "Actions"
 
+# Permís per desar l'històric (output/borsa_history.json) de tornada al repo,
+# perquè l'antiduplicats per festius funcioni entre execucions a CI.
+permissions:
+  contents: write
+
 # Evita execucions solapades
 concurrency:
   group: borsa
@@ -44,3 +49,8 @@ jobs:
           R2_PUBLIC_BASE: ${{ secrets.R2_PUBLIC_BASE }}
           BORSA_SUBREDDIT: ${{ secrets.BORSA_SUBREDDIT }}
         run: python borsa.py --push --quiet
+
+      - name: Desa l'històric (resistent a curses)
+        if: always()
+        run: |
+          bash scripts/sync_queue.sh "chore: històric de borsa [skip ci]" output/borsa_history.json

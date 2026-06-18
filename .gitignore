@@ -9,6 +9,7 @@ output/history.json
 # La cua ja no es publica a GitHub: va a la cua privada del Cloudflare Worker.
 queue/
 
-# Borsa: PNGs generats i històric (artefactes locals)
+# Borsa: els PNG generats són artefactes (van a R2), no al git.
+# NOTA: output/borsa_history.json NO s'ignora a posta — el workflow el commiteja
+# de tornada (com bsky_history.json) perquè l'antiduplicats per festius funcioni a CI.
 output/borsa-*.png
-output/borsa_history.json
