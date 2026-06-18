@@ -8,7 +8,9 @@ def test_sources_due_per_day():
     # Juny 2026: dia 1 = dilluns (1a setmana).
     assert ex.sources_due(date(2026, 6, 1)) == ["senders_feec", "escapadaambnens"]
     assert ex.sources_due(date(2026, 6, 8)) == ["dexcursio"]       # 2n dilluns
-    assert ex.sources_due(date(2026, 6, 15)) == ["timeout"]        # 3r dilluns
+    # 3r dilluns (timeout) i dia 15 (activitats recomanades) coincideixen.
+    assert ex.sources_due(date(2026, 6, 15)) == ["timeout", "escapadaambnens_activitats"]
+    assert "escapadaambnens_activitats" in ex.sources_due(date(2026, 7, 15))  # qualsevol dia 15
     assert ex.sources_due(date(2026, 6, 9)) == ["elmonensespera"]  # dimarts
     assert ex.sources_due(date(2026, 6, 10)) == ["sortirambnens"]  # dimecres
     assert ex.sources_due(date(2026, 6, 18)) == ["surtdecasa"]     # dijous

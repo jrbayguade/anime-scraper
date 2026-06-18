@@ -278,6 +278,12 @@ def parse_dexcursio(_today: date) -> list[Fitxa]:
         "dexcursio", "D'excursió", "https://dexcursio.net", og_image=True)
 
 
+def parse_femturisme(_today: date) -> list[Fitxa]:
+    """Notícies/propostes de turisme (feed RSS a /rss, no /feed/)."""
+    return _parse_rss("https://femturisme.cat/rss", "femturisme",
+                      "Fem Turisme", "https://femturisme.cat")
+
+
 def _img_src(node) -> str:
     img = node.find("img") if node else None
     if not img:
@@ -348,6 +354,66 @@ def parse_barcelona_nens(_today: date) -> list[Fitxa]:
     return out
 
 
+def parse_escapadaambnens_activitats(_today: date) -> list[Fitxa]:
+    """Activitats recomanades en família (escapadaambnens.com/activitats-amb-nens)."""
+    web = "https://www.escapadaambnens.com"
+    soup = _get_soup(f"{web}/activitats-amb-nens/")
+    if not soup:
+        return []
+    out: list[Fitxa] = []
+    for a in soup.select("a.item"):
+        href = a.get("href", "")
+        if "/activitat/" not in href:
+            continue
+        info = a.select_one(".info")
+        parts = [t.strip() for t in info.stripped_strings] if info else []
+        where = parts[0] if len(parts) >= 2 else ""
+        title = (a.get("title") or (parts[1] if len(parts) >= 2 else "")).replace(
+            " en familia", "").strip()
+        src = _img_src(a)
+        if title and src:
+            out.append(Fitxa(
+                "escapadaambnens_activitats", "Escapada amb nens", web, title,
+                href if href.startswith("http") else web + href,
+                " ".join(parts), src, where=where))
+    log.info("escapadaambnens activitats: %d recomanades.", len(out))
+    return out
+
+
+def parse_senders_feec(_today: date) -> list[Fitxa]:
+    """Senders (FEEC): el mapa carrega via admin-ajax `get_senders` (cal nonce)."""
+    web = "https://senders.feec.cat"
+    try:
+        sess = requests.Session()
+        sess.headers.update(config.HTTP_HEADERS)
+        home = sess.get(f"{web}/", timeout=config.REQUEST_TIMEOUT).text
+        m = re.search(r'["\']nonce["\']?\s*[:=]\s*["\']([\w]+)', home)
+        if not m:
+            log.warning("senders_feec: nonce no trobat.")
+            return []
+        html = sess.post(f"{web}/wp-admin/admin-ajax.php",
+                        data={"action": "get_senders", "nonce": m.group(1)},
+                        timeout=config.REQUEST_TIMEOUT).text
+    except Exception as exc:  # noqa: BLE001
+        log.warning("senders_feec ha fallat: %s", exc)
+        return []
+    soup = BeautifulSoup(html, "lxml")
+    out: list[Fitxa] = []
+    for it in soup.select(".item-senders"):
+        a = it.find("a", href=True)
+        src = _img_src(it)
+        if not (a and src):
+            continue
+        h = it.find(["h2", "h3", "h4"])
+        strs = list(it.stripped_strings)
+        title = (h.get_text(" ", strip=True) if h else (strs[0] if strs else "")).strip()
+        if title:
+            out.append(Fitxa("senders_feec", "Senders FEEC", web, title,
+                             urljoin(web, a["href"]), " ".join(strs[:4]), src))
+    log.info("senders_feec: %d senders.", len(out))
+    return out
+
+
 def _parser_pendent(key: str):
     """Crea un stub de parser que registra que la font encara no està feta."""
     def _stub(_today: date) -> list[Fitxa]:
@@ -362,6 +428,10 @@ SOURCES: dict[str, dict] = {
         "name": "Escapada amb nens", "web": "https://www.escapadaambnens.com",
         "parse": parse_escapadaambnens,
     },
+    "escapadaambnens_activitats": {
+        "name": "Escapada amb nens", "web": "https://www.escapadaambnens.com",
+        "parse": parse_escapadaambnens_activitats,
+    },
     "elmonensespera": {
         "name": "El món ens espera", "web": "https://elmonensespera.com",
         "parse": parse_elmonensespera,
@@ -372,7 +442,7 @@ SOURCES: dict[str, dict] = {
     },
     "senders_feec": {
         "name": "Senders FEEC", "web": "https://senders.feec.cat",
-        "parse": _parser_pendent("senders_feec"),
+        "parse": parse_senders_feec,
     },
     "dexcursio": {
         "name": "D'excursió", "web": "https://dexcursio.net",
@@ -392,7 +462,7 @@ SOURCES: dict[str, dict] = {
     },
     "femturisme": {
         "name": "Fem Turisme", "web": "https://femturisme.cat",
-        "parse": _parser_pendent("femturisme"),
+        "parse": parse_femturisme,
     },
 }
 
@@ -422,7 +492,9 @@ def sources_due(d: date) -> list[str]:
     if dow == 0 and week_of_month == 3:
         due.append("timeout")            # 3r dilluns
     if d.day == 1:
-        due.append("escapadaambnens")    # dia 1: festes del mes que ve
+        due.append("escapadaambnens")              # dia 1: festes del mes que ve
+    if d.day == 15:
+        due.append("escapadaambnens_activitats")   # dia 15: activitats recomanades
     return due
 
 

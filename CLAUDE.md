@@ -42,8 +42,8 @@ Té **sis sortides independents**, cadascuna amb el seu cron de GitHub Actions:
    setmana / setmana del mes), en tria UNA fitxa nova, la resumeix amb DeepSeek,
    **re-allotja la foto a R2** i la publica a **r/ExplorantCatalunya** com a post
    d'imatge + primer comentari (resum + enllaç a la font en cursiva). Dedup amb
-   `output/explorant_history.json`. Fonts implementades: 7/9 (vegeu la secció de
-   fonts).
+   `output/explorant_history.json`. Les 9 fonts estan implementades (festes i
+   activitats d'escapadaambnens compten com a dues).
 
 Totes les sortides acaben **encuant un JSON a la cua del Cloudflare Worker**
 (`queue_store.enqueue`), i una **extensió de Chrome** llegeix la cua i publica a
@@ -198,23 +198,24 @@ prou. Cada parser retorna `list[Fitxa]`; es tria la primera no publicada (dedup 
 `source_key|url` a `explorant_history.json`). El resum prim s'enriqueix amb
 l'`og:description` de l'article abans de passar-lo a DeepSeek.
 
-| Font | Quan | Mètode | Estat |
-|---|---|---|---|
-| escapadaambnens (festes/fires del mes que ve) | dia 1 de mes | HTML (`a.item_festival`) | ✅ |
-| elmonensespera | dimarts | wp-json (RSS bloquejat) | ✅ |
-| sortirambnens | dimecres | RSS de categoria | ✅ |
-| surtdecasa | dijous | HTML (`.views-row`) | ✅ |
-| femturisme | divendres | — | ⏳ JS (incompatible amb CI) |
-| barcelona_nens | dissabte | HTML (`article`) | ✅ |
-| senders_feec | 1r dilluns | — | ⏳ mapa JS / sense API |
-| dexcursio | 2n dilluns | RSS + og:image | ✅ |
-| timeout | 3r dilluns | HTML (`article`) | ✅ |
+| Font | Quan | Mètode |
+|---|---|---|
+| escapadaambnens (festes/fires del mes que ve) | dia 1 de mes | HTML (`a.item_festival`, filtre per mes vinent) |
+| escapadaambnens (activitats recomanades) | dia 15 de mes | HTML (`a.item` a `/activitats-amb-nens/`) |
+| elmonensespera | dimarts | wp-json (`/wp-json/wp/v2/posts`; el RSS està bloquejat) |
+| sortirambnens | dimecres | RSS de categoria |
+| surtdecasa | dijous | HTML (`.views-row`) |
+| femturisme | divendres | RSS a **`/rss`** (no `/feed/`) |
+| barcelona_nens | dissabte | HTML (`article`) |
+| senders_feec | 1r dilluns | admin-ajax **`get_senders`** amb nonce de la home + sessió |
+| dexcursio | 2n dilluns | RSS + og:image |
+| timeout | 3r dilluns | HTML (`article`) |
 
-> **Per què 2 pendents:** femturisme i senders_feec pinten el contingut amb
-> JavaScript (o un mapa extern sense API pública), i el pipeline de CI fa servir
-> `requests` sense navegador, així que no es poden scrapejar tal com estan. El seu
-> parser és un stub que registra l'avís i no publica res (no peta). Per activar-los
-> caldria trobar-ne l'API interna o renderitzar amb un navegador (fora del CI).
+> **Trucs no obvis:** femturisme exposa l'RSS a `/rss` (no `/feed/`); senders.feec
+> carrega el mapa via `admin-ajax.php?action=get_senders`, que necessita el `nonce`
+> incrustat a la home i les cookies de la mateixa sessió; elmonensespera té el feed
+> RSS bloquejat però sí l'API wp-json. Les imatges WebP es converteixen a JPG en
+> re-allotjar (Reddit pot rebutjar WebP).
 
 ## DeepSeek (opcional)
 
