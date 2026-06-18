@@ -43,6 +43,8 @@ import sys
 from dataclasses import dataclass
 from datetime import date, datetime
 
+from urllib.parse import urljoin
+
 import feedparser
 import requests
 from bs4 import BeautifulSoup
@@ -123,6 +125,18 @@ def _og_image(url: str) -> str:
         return ""
     m = soup.find("meta", property="og:image") or soup.find("meta", attrs={"name": "og:image"})
     return (m.get("content") or "").strip() if m else ""
+
+
+def _og_description(url: str) -> str:
+    """Descripció de l'article (og:description o meta description) per enriquir."""
+    soup = _get_soup(url)
+    if not soup:
+        return ""
+    for attrs in (("property", "og:description"), ("name", "description")):
+        m = soup.find("meta", attrs={attrs[0]: attrs[1]})
+        if m and m.get("content"):
+            return m["content"].strip()
+    return ""
 
 
 def _entry_image(entry, og_fallback: bool) -> str:
@@ -235,6 +249,76 @@ def parse_dexcursio(_today: date) -> list[Fitxa]:
         "dexcursio", "D'excursió", "https://dexcursio.net", og_image=True)
 
 
+def _img_src(node) -> str:
+    img = node.find("img") if node else None
+    if not img:
+        return ""
+    src = (img.get("src") or img.get("data-src") or "").strip()
+    return src if src.startswith("http") else ""
+
+
+def parse_surtdecasa(_today: date) -> list[Fitxa]:
+    """Agenda del cap de setmana (HTML; cada `.views-row` és un esdeveniment)."""
+    web = "https://surtdecasa.cat"
+    soup = _get_soup(f"{web}/agenda/cap-de-setmana")
+    if not soup:
+        return []
+    out: list[Fitxa] = []
+    for row in soup.select(".views-row"):
+        a = row.find("a", href=True)
+        title = ""
+        for h in row.find_all(["h3", "h2"]):
+            t = h.get_text(" ", strip=True)
+            if t and not t.lower().startswith("foto"):
+                title = t
+                break
+        src = _img_src(row)
+        if a and title and src:
+            out.append(Fitxa("surtdecasa", "Surt de casa", web, title,
+                             urljoin(web, a["href"]), title, src))
+    log.info("surtdecasa: %d esdeveniments.", len(out))
+    return out
+
+
+def parse_timeout(_today: date) -> list[Fitxa]:
+    """Què fer a Barcelona (HTML; targetes `article`)."""
+    web = "https://www.timeout.cat"
+    soup = _get_soup(f"{web}/barcelona/ca/que-fer")
+    if not soup:
+        return []
+    out: list[Fitxa] = []
+    for art in soup.select("article"):
+        h = art.find(["h3", "h2"])
+        a = art.find("a", href=True)
+        src = _img_src(art)
+        if h and a and src:
+            title = h.get_text(" ", strip=True)
+            if title:
+                out.append(Fitxa("timeout", "Time Out Barcelona", web, title,
+                                 urljoin(web, a["href"]), title, src))
+    log.info("timeout: %d propostes.", len(out))
+    return out
+
+
+def parse_barcelona_nens(_today: date) -> list[Fitxa]:
+    """Cap de setmana amb nens (HTML; targetes `article`)."""
+    web = "https://www.barcelona.cat"
+    soup = _get_soup(f"{web}/capdesetmana/ca/nens-i-nenes")
+    if not soup:
+        return []
+    out: list[Fitxa] = []
+    for art in soup.select("article"):
+        a = art.find("a", href=True)
+        src = _img_src(art)
+        if a and src:
+            title = a.get_text(" ", strip=True)
+            if title:
+                out.append(Fitxa("barcelona_nens", "Barcelona.cat", web, title,
+                                 urljoin(web, a["href"]), title, src))
+    log.info("barcelona_nens: %d activitats.", len(out))
+    return out
+
+
 def _parser_pendent(key: str):
     """Crea un stub de parser que registra que la font encara no està feta."""
     def _stub(_today: date) -> list[Fitxa]:
@@ -267,15 +351,15 @@ SOURCES: dict[str, dict] = {
     },
     "timeout": {
         "name": "Time Out Barcelona", "web": "https://www.timeout.cat",
-        "parse": _parser_pendent("timeout"),
+        "parse": parse_timeout,
     },
     "surtdecasa": {
         "name": "Surt de casa", "web": "https://surtdecasa.cat",
-        "parse": _parser_pendent("surtdecasa"),
+        "parse": parse_surtdecasa,
     },
     "barcelona_nens": {
         "name": "Barcelona.cat (cap de setmana)", "web": "https://www.barcelona.cat",
-        "parse": _parser_pendent("barcelona_nens"),
+        "parse": parse_barcelona_nens,
     },
     "femturisme": {
         "name": "Fem Turisme", "web": "https://femturisme.cat",
@@ -448,6 +532,11 @@ def main() -> int:
         if not f:
             log.info("Font «%s»: res de nou per publicar.", key)
             continue
+        # Resum prim (només el títol)? Enriqueix amb l'og:description de l'article.
+        if len(f.summary) < len(f.title) + 25:
+            desc = _og_description(f.url)
+            if desc:
+                f.summary = desc
         comment = build_comment(f, use_llm=use_llm)
 
         if not args.push:
