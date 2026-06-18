@@ -204,6 +204,15 @@ BORSA_SUBREDDIT = os.getenv("BORSA_SUBREDDIT", "lapelaeslapela").strip()
 BORSA_HISTORY_FILE = OUTPUT_DIR / "borsa_history.json"
 
 # --------------------------------------------------------------------------- #
+# Explorant Catalunya — activitats i escapades en família (multi-font)         #
+# --------------------------------------------------------------------------- #
+# Pack que scrapeja diverses webs catalanes (cadascuna amb el seu calendari),
+# en resumeix una amb DeepSeek i la publica a r/ExplorantCatalunya com a post
+# d'imatge (foto re-allotjada a R2) + primer comentari (resum + enllaç a la font).
+EXPLORANT_SUBREDDIT = os.getenv("EXPLORANT_SUBREDDIT", "ExplorantCatalunya").strip()
+EXPLORANT_HISTORY_FILE = OUTPUT_DIR / "explorant_history.json"
+
+# --------------------------------------------------------------------------- #
 # Cloudflare R2 (hostatge d'imatges generades)                                 #
 # --------------------------------------------------------------------------- #
 # Per publicar un post d'IMATGE amb una imatge generada localment (p.ex. el

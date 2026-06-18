@@ -1,0 +1,51 @@
+name: Explorant Catalunya · activitats en família (diari)
+
+on:
+  schedule:
+    # Cada dia a les 06:00 UTC (08:00 hora catalana a l'estiu / 07:00 a l'hivern).
+    # explorant.py decideix quines fonts toquen avui (dia de setmana / setmana del
+    # mes); la majoria de dies publica 0-1 posts. El cron de GitHub sempre és UTC.
+    - cron: "0 6 * * *"
+  workflow_dispatch: {}
+
+# Permís per desar l'històric (output/explorant_history.json) de tornada al repo.
+permissions:
+  contents: write
+
+concurrency:
+  group: explorant
+  cancel-in-progress: false
+
+jobs:
+  explorant:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Descarrega el codi
+        uses: actions/checkout@v4
+
+      - name: Prepara Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Instal·la dependències
+        run: pip install -r requirements.txt
+
+      - name: Publica les activitats que toquin avui
+        env:
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          WORKER_URL: ${{ secrets.WORKER_URL }}
+          WORKER_WRITE_TOKEN: ${{ secrets.WORKER_WRITE_TOKEN }}
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_PUBLIC_BASE: ${{ secrets.R2_PUBLIC_BASE }}
+          EXPLORANT_SUBREDDIT: ${{ secrets.EXPLORANT_SUBREDDIT }}
+        run: python explorant.py --push --quiet
+
+      - name: Desa l'històric (resistent a curses)
+        if: always()
+        run: |
+          bash scripts/sync_queue.sh "chore: històric d'explorant [skip ci]" output/explorant_history.json
