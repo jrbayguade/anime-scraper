@@ -484,12 +484,25 @@ def rehost_image(f: Fitxa) -> str:
     import r2_upload
     r = requests.get(f.image_url, headers=config.HTTP_HEADERS, timeout=config.REQUEST_TIMEOUT)
     r.raise_for_status()
+    data = r.content
     ctype = r.headers.get("Content-Type", "image/jpeg").split(";")[0].strip()
     ext = {"image/jpeg": "jpg", "image/png": "png", "image/webp": "webp",
            "image/gif": "gif"}.get(ctype, "jpg")
+    # Reddit pot rebutjar WebP en posts d'imatge: converteix a JPG (Pillow ve amb
+    # matplotlib). Si falla, es manté el WebP original.
+    if ext == "webp":
+        try:
+            import io
+            from PIL import Image
+            im = Image.open(io.BytesIO(data)).convert("RGB")
+            buf = io.BytesIO()
+            im.save(buf, format="JPEG", quality=88)
+            data, ext, ctype = buf.getvalue(), "jpg", "image/jpeg"
+        except Exception as exc:  # noqa: BLE001
+            log.warning("No s'ha pogut convertir WebP a JPG: %s", exc)
     stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     key = f"explorant/{f.source_key}/{stamp}.{ext}"
-    return r2_upload.upload_bytes(r.content, key, content_type=ctype)
+    return r2_upload.upload_bytes(data, key, content_type=ctype)
 
 
 # --------------------------------------------------------------------------- #
