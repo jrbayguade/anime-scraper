@@ -159,7 +159,9 @@ def fetch_market_caps(tickers: list[str]) -> dict[str, float]:
     caps: dict[str, float] = {}
     for t in tickers:
         try:
-            cap = yf.Ticker(t).fast_info.get("market_cap")
+            # Accés per ATRIBUT: el .get() de FastInfo no normalitza la clau i
+            # retorna None; fast_info.market_cap sí que dona el valor.
+            cap = yf.Ticker(t).fast_info.market_cap
             if cap:
                 caps[t] = float(cap)
         except Exception:  # noqa: BLE001
