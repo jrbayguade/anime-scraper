@@ -6,8 +6,9 @@ tocar res relacionat amb la publicació.
 
 ## Què és
 
-Bot que prepara contingut d'anime en català i el publica a **r/AnimeCatala**.
-Té **quatre sortides independents**, cadascuna amb el seu cron de GitHub Actions:
+Bot que prepara contingut en català i el publica a Reddit (sobretot
+**r/AnimeCatala**; vegeu la 5a sortida, que va a un altre subreddit).
+Té **cinc sortides independents**, cadascuna amb el seu cron de GitHub Actions:
 
 1. **Recull setmanal** (dilluns) — `main.py`. Fa webscraping de notícies d'anime
    (El Racó del Manga, Fansubs.cat, Anime Corner), les resumeix/tradueix amb
@@ -27,9 +28,16 @@ Té **quatre sortides independents**, cadascuna amb el seu cron de GitHub Action
    `queue_store` (com la graella i les novetats). Sense fallback estàtic: si
    DeepSeek no respon, el procés acaba amb error (workflow vermell).
 
-Les quatre sortides acaben **encuant un JSON a la cua del Cloudflare Worker**
+5. **Heatmap de la borsa** (dies de mercat) — `borsa.py`. Cada matí (dt–ds) agafa
+   amb yfinance el tancament de l'S&P 500 pels 11 sectors GICS, en pinta un
+   **heatmap** (matplotlib), el puja a **Cloudflare R2** (`r2_upload.py`) per
+   tenir-ne URL, i publica un **post d'imatge a r/lapelaeslapela** amb un comentari
+   en català generat per DeepSeek (fallback determinista si DeepSeek cau). No
+   publica en festius de borsa (idempotència per data de sessió).
+
+Totes les sortides acaben **encuant un JSON a la cua del Cloudflare Worker**
 (`queue_store.enqueue`), i una **extensió de Chrome** llegeix la cua i publica a
-Reddit.
+Reddit. Cada ítem porta el seu `subreddit`, així que no totes van a r/AnimeCatala.
 
 ## ⚠️ Com es publica a Reddit (FONAMENTAL)
 
@@ -106,6 +114,8 @@ El `payload` mínim que rep `enqueue()`:
 | `sx3_schedule.py` | Graella d'anime de SX3 (autònom): API de 3Cat → post Markdown + DeepSeek → `--push` encua al Worker. |
 | `bluesky_manga.py` | Novetats mensuals de manga (autònom): feed de Bluesky → selecció determinista (+xarxa DeepSeek acotada) → `--push` encua post d'imatge al Worker. |
 | `endevina_anime.py` | Joc «Endevina-ho, otaku!» (autònom): categoria rotativa + DeepSeek → post de text amb solució amb spoiler → cua del Worker. |
+| `borsa.py` | Heatmap diari de la borsa (autònom): yfinance (11 sectors S&P) → matplotlib → R2 → DeepSeek → post d'imatge a r/lapelaeslapela. |
+| `r2_upload.py` | **Pujada d'imatges a R2 (genèric).** Per a posts d'imatge amb una imatge GENERADA (no una URL externa). Reutilitzable. |
 
 ## Font de dades de SX3
 
@@ -149,6 +159,22 @@ https://public.api.bsky.app/xrpc/app.bsky.feed.getAuthorFeed
 - L'històric és `output/bsky_history.json` (`{uris, months}`), independent del
   del recull setmanal.
 
+## Font de dades de la borsa (yfinance)
+
+`borsa.py` baixa amb **yfinance** els tancaments diaris de l'ETF `SPY` (titular) i
+els 11 ETFs SPDR de sector GICS (`XLK`, `XLC`, `XLY`, `XLP`, `XLE`, `XLF`, `XLV`,
+`XLI`, `XLB`, `XLRE`, `XLU`) i en calcula el % (close vs close anterior).
+
+- **Separació I/O vs lògica:** `fetch_closes()` és l'única part que toca xarxa
+  (i la que mockegen els tests); `compute_changes()` i `build_rows()` són pures.
+- **Idempotència/festius:** `output/borsa_history.json` (`{"last_session"}`) evita
+  duplicar; si la data de l'última sessió no és nova, `--push` no encua res.
+- **Heatmap:** matplotlib (backend `Agg`), paleta `RdYlGn` centrada a 0% i
+  clampada a ±2%. El PNG es puja a R2 (`r2_upload.upload_bytes`) per tenir-ne URL.
+- **Comentari:** DeepSeek rep els números i els relata (mai inventa dades); si
+  falla, comentari determinista. Va al `comment_markdown` (primer comentari).
+- yfinance pot petar/limitar a CI: s'aplica la convenció de robustesa (fail-soft).
+
 ## DeepSeek (opcional)
 
 S'usa per als resums/traduccions del recull setmanal i per a la intro + pregunta
@@ -168,10 +194,14 @@ Si no hi ha `DEEPSEEK_API_KEY`, tot funciona igual amb un fallback estàtic.
 | `.github/workflows/sx3-graella.yml` | divendres 08:50 UTC | `python sx3_schedule.py --push --quiet` |
 | `.github/workflows/manga-novetats.yml` | dimarts 09:00 UTC | `python bluesky_manga.py --push --quiet` (novetats de manga) |
 | `.github/workflows/endevina-anime.yml` | dimecres i dissabte 18:00 UTC | `python endevina_anime.py --push --quiet` (joc otaku) |
+| `.github/workflows/borsa.yml` | dt–ds 04:00 UTC (05:00/06:00 CAT) | `python borsa.py --push --quiet` (heatmap de la borsa) |
 
 Tots tenen `workflow_dispatch` (botó **Run workflow** per provar-los a mà).
 **Secrets necessaris** (Settings ▸ Secrets ▸ Actions): `DEEPSEEK_API_KEY`,
-`WORKER_URL` i `WORKER_WRITE_TOKEN` (compartits pels quatre fluxos).
+`WORKER_URL` i `WORKER_WRITE_TOKEN` (compartits per les cinc sortides). La borsa
+necessita, a més, els secrets de R2 (`R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`,
+`R2_SECRET_ACCESS_KEY`, `R2_BUCKET`, `R2_PUBLIC_BASE`) i opcionalment
+`BORSA_SUBREDDIT`.
 
 > Nota DST: el cron de GitHub és sempre UTC. 08:50 UTC = 09:50 a l'hivern /
 > 10:50 a l'estiu a Catalunya. No es pot fixar l'hora local tot l'any amb un sol cron.
@@ -200,6 +230,12 @@ python bluesky_manga.py --no-llm --post     # només filtre determinista
 # Joc «Endevina-ho, otaku!»
 python endevina_anime.py --post             # preview del joc (no encua res)
 python endevina_anime.py --push             # genera i encua a la cua del Worker
+
+# Heatmap de la borsa
+python borsa.py --debug                     # taula crua de % per sector
+python borsa.py --post                      # desa el PNG a output/ + comentari (no puja ni encua)
+python borsa.py --push                      # genera, puja a R2 i encua al Worker
+python borsa.py --no-llm --post             # comentari determinista (sense DeepSeek)
 ```
 
 > **Publicació manual (`--manual`):** alternativa a l'extensió (publicar del tot

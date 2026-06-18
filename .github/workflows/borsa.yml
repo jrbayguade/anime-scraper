@@ -1,0 +1,46 @@
+name: Borsa · heatmap del tancament S&P 500 (dies de mercat)
+
+on:
+  schedule:
+    # 04:00 UTC de dimarts a dissabte = 05:00 a l'hivern (CET) / 06:00 a l'estiu
+    # (CEST) a Catalunya: surt d'hora i el tancament de Wall Street de la sessió
+    # anterior (el mercat dels EUA tanca ~20–21 h UTC) fa hores que hi és. Reddit
+    # rep el post dt–ds (tancaments dl–dv). Els festius de borsa es gestionen en
+    # codi (borsa.py no publica si la data de sessió no és nova). El cron de
+    # GitHub sempre és UTC i no segueix el canvi d'hora (per això ±1h tot l'any).
+    - cron: "0 4 * * 2-6"
+  workflow_dispatch: {}   # botó per executar-lo a mà des de la pestanya "Actions"
+
+# Evita execucions solapades
+concurrency:
+  group: borsa
+  cancel-in-progress: false
+
+jobs:
+  borsa:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Descarrega el codi
+        uses: actions/checkout@v4
+
+      - name: Prepara Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Instal·la dependències
+        run: pip install -r requirements.txt
+
+      - name: Genera el heatmap de la borsa i encua'l per a l'extensió
+        env:
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          WORKER_URL: ${{ secrets.WORKER_URL }}
+          WORKER_WRITE_TOKEN: ${{ secrets.WORKER_WRITE_TOKEN }}
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_PUBLIC_BASE: ${{ secrets.R2_PUBLIC_BASE }}
+          BORSA_SUBREDDIT: ${{ secrets.BORSA_SUBREDDIT }}
+        run: python borsa.py --push --quiet
