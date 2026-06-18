@@ -621,6 +621,43 @@ def build_payload(f: Fitxa, image_url: str, comment: str) -> dict:
 # --------------------------------------------------------------------------- #
 # CLI                                                                          #
 # --------------------------------------------------------------------------- #
+# URL principal que toca cada parser (per al mode --diagnose).
+_PROBE_URL = {
+    "escapadaambnens": "https://www.escapadaambnens.com/festivals-familiars/",
+    "escapadaambnens_activitats": "https://www.escapadaambnens.com/activitats-amb-nens/",
+    "elmonensespera": "https://elmonensespera.com/wp-json/wp/v2/posts?per_page=2&_embed=1",
+    "sortirambnens": "https://www.sortirambnens.com/excursions-amb-nens/feed/",
+    "senders_feec": "https://senders.feec.cat/",
+    "dexcursio": "https://dexcursio.net/feed/",
+    "timeout": "https://www.timeout.cat/barcelona/ca/que-fer",
+    "surtdecasa": "https://surtdecasa.cat/agenda/cap-de-setmana",
+    "barcelona_nens": "https://www.barcelona.cat/capdesetmana/ca/nens-i-nenes",
+    "femturisme": "https://femturisme.cat/rss",
+}
+
+
+def diagnose(keys: list[str]) -> None:
+    """Ensenya, sense encuar, què rep el CI de cada font (resposta crua + nº fitxes)."""
+    for key in keys:
+        url = _PROBE_URL.get(key, "")
+        line = f"[{key}]"
+        if url:
+            try:
+                r = requests.get(url, headers={**config.HTTP_HEADERS, "Accept": "*/*"},
+                                 timeout=config.REQUEST_TIMEOUT)
+                snippet = r.text[:90].replace("\n", " ").replace("\r", " ")
+                line += (f" HTTP {r.status_code} · {r.headers.get('Content-Type','?')[:25]}"
+                         f" · {len(r.content)}B · «{snippet}»")
+            except Exception as exc:  # noqa: BLE001
+                line += f" FETCH ERROR: {exc}"
+        try:
+            n = len(SOURCES[key]["parse"](date.today()))
+            line += f"  →  {n} fitxes"
+        except Exception as exc:  # noqa: BLE001
+            line += f"  →  PARSER ERROR: {exc}"
+        print(line)
+
+
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Pack «Explorant Catalunya».")
     p.add_argument("--post", action="store_true", help="Preview (no encua res).")
@@ -628,6 +665,8 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--source", help="Força una font concreta (clau de SOURCES).")
     p.add_argument("--all", action="store_true",
                    help="Totes les fonts, ignorant el calendari (per provar).")
+    p.add_argument("--diagnose", action="store_true",
+                   help="Diagnòstic: què rep cada font (no encua res).")
     p.add_argument("--no-llm", action="store_true", help="Sense DeepSeek (resum cru).")
     p.add_argument("--quiet", action="store_true", help="Menys missatges.")
     return p.parse_args()
@@ -640,12 +679,17 @@ def main() -> int:
     use_llm = config.USE_LLM and not args.no_llm
     today = date.today()
 
-    if args.all:
+    if args.all or args.diagnose:
         keys = list(SOURCES)
     elif args.source:
         keys = [args.source]
     else:
         keys = sources_due(today)
+
+    if args.diagnose:
+        diagnose(keys)
+        return 0
+
     if not keys:
         print("Avui no toca cap font. (Calendari a sources_due.)")
         return 0

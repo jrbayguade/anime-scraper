@@ -12,6 +12,10 @@ on:
         description: "Publica TOTES les fonts (ignora el calendari) — per provar"
         type: boolean
         default: false
+      diagnose:
+        description: "Diagnòstic: mostra què rep cada font (no encua res)"
+        type: boolean
+        default: false
 
 # Permís per desar l'històric (output/explorant_history.json) de tornada al repo.
 permissions:
@@ -49,8 +53,11 @@ jobs:
           R2_PUBLIC_BASE: ${{ secrets.R2_PUBLIC_BASE }}
           EXPLORANT_SUBREDDIT: ${{ secrets.EXPLORANT_SUBREDDIT }}
           ALL: ${{ github.event.inputs.all }}
+          DIAGNOSE: ${{ github.event.inputs.diagnose }}
         run: |
-          if [ "$ALL" = "true" ]; then
+          if [ "$DIAGNOSE" = "true" ]; then
+            python explorant.py --diagnose
+          elif [ "$ALL" = "true" ]; then
             python explorant.py --push --quiet --all
           else
             python explorant.py --push --quiet
