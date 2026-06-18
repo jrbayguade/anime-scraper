@@ -253,7 +253,7 @@ def _draw_sector_grid(ax, rows: list[SectorRow], spy_pct: float | None, cmap) ->
     ax.set_xlim(0, ncols)
     ax.set_ylim(0, nrows)
     ax.axis("off")
-    ax.set_title("Per sectors", fontsize=12, weight="bold", loc="left", pad=6)
+    ax.set_title("Per sectors", fontsize=14, weight="bold", loc="left", pad=6)
 
     for i, (label, pct, is_index) in enumerate(cells):
         col, row = i % ncols, i // ncols
@@ -262,10 +262,10 @@ def _draw_sector_grid(ax, rows: list[SectorRow], spy_pct: float | None, cmap) ->
         ax.add_patch(Rectangle((col, y), 1, 1, facecolor=color,
                                edgecolor="white", linewidth=2))
         tc = _text_color(color)
-        ax.text(col + 0.5, y + 0.60, label, ha="center", va="center",
-                fontsize=9.5, weight="bold" if is_index else "normal", color=tc)
-        ax.text(col + 0.5, y + 0.30, fmt_pct(pct), ha="center", va="center",
-                fontsize=12, weight="bold", color=tc)
+        ax.text(col + 0.5, y + 0.58, label, ha="center", va="center",
+                fontsize=12, weight="bold" if is_index else "normal", color=tc)
+        ax.text(col + 0.5, y + 0.28, fmt_pct(pct), ha="center", va="center",
+                fontsize=15, weight="bold", color=tc)
 
 
 def _draw_treemap(ax, stocks: list[Stock], cmap) -> None:
@@ -275,7 +275,9 @@ def _draw_treemap(ax, stocks: list[Stock], cmap) -> None:
     from matplotlib.patches import Rectangle
 
     norm = TwoSlopeNorm(vmin=-3.0, vcenter=0.0, vmax=3.0)
-    W = H = 100.0
+    # Espai 16:9 (ample): amb un subplot horitzontal, les caselles surten amples
+    # i hi caben etiquetes més grans.
+    W, H = 160.0, 90.0
     sizes = squarify.normalize_sizes([s.market_cap for s in stocks], W, H)
     rects = squarify.squarify(sizes, 0, 0, W, H)
 
@@ -283,7 +285,7 @@ def _draw_treemap(ax, stocks: list[Stock], cmap) -> None:
     ax.set_ylim(0, H)
     ax.invert_yaxis()  # de més gran (dalt-esq) cap avall, com Finviz
     ax.axis("off")
-    ax.set_title("Principals valors", fontsize=12, weight="bold", loc="left", pad=6)
+    ax.set_title("Principals valors", fontsize=14, weight="bold", loc="left", pad=6)
 
     for st, rc in zip(stocks, rects):
         x, y, dx, dy = rc["x"], rc["y"], rc["dx"], rc["dy"]
@@ -291,15 +293,18 @@ def _draw_treemap(ax, stocks: list[Stock], cmap) -> None:
         ax.add_patch(Rectangle((x, y), dx, dy, facecolor=color,
                                edgecolor="white", linewidth=1.5))
         tc = _text_color(color)
-        # Mida de lletra proporcional a la caixa; etiqueta només si hi cap.
-        fs = max(5.0, min(dx, dy) * 0.34)
-        if min(dx, dy) < 5:
-            continue
-        ax.text(x + dx / 2, y + dy / 2 - fs * 0.05, st.ticker,
-                ha="center", va="center", fontsize=fs, weight="bold", color=tc)
-        if dy > 9:  # només si la caixa és prou alta per a una segona línia
-            ax.text(x + dx / 2, y + dy / 2 + fs * 0.85, fmt_pct(st.pct),
-                    ha="center", va="center", fontsize=fs * 0.8, color=tc)
+        # Mida de lletra proporcional a la caixa (més gran que abans), amb topall
+        # perquè als quadres gegants no quedi desproporcionada.
+        fs = max(8.0, min(min(dx, dy) * 0.62, 22.0))
+        if min(dx, dy) < 4:
+            continue  # caixa massa petita per a cap etiqueta
+        two_lines = dy > 11 and dx > 14
+        ax.text(x + dx / 2, y + dy / 2 - (fs * 0.4 if two_lines else 0),
+                st.ticker, ha="center", va="center", fontsize=fs,
+                weight="bold", color=tc)
+        if two_lines:
+            ax.text(x + dx / 2, y + dy / 2 + fs * 0.6, fmt_pct(st.pct),
+                    ha="center", va="center", fontsize=fs * 0.72, color=tc)
 
 
 def render_image(session: date, rows: list[SectorRow], spy_pct: float | None,
@@ -314,13 +319,14 @@ def render_image(session: date, rows: list[SectorRow], spy_pct: float | None,
     cmap = matplotlib.colormaps["RdYlGn"]  # API estable (matplotlib ≥3.6)
 
     if stocks:
-        # Sectors a dalt (més compacte) + treemap a sota (protagonista).
-        fig = plt.figure(figsize=(11, 12), layout="constrained")
-        gs = fig.add_gridspec(2, 1, height_ratios=[3, 5])
+        # Format horitzontal: sectors a dalt (franja compacta) + treemap a sota
+        # (protagonista, ample). Aprofita l'amplada quan Reddit l'escala.
+        fig = plt.figure(figsize=(16, 10), layout="constrained")
+        gs = fig.add_gridspec(2, 1, height_ratios=[2, 4])
         _draw_sector_grid(fig.add_subplot(gs[0]), rows, spy_pct, cmap)
         _draw_treemap(fig.add_subplot(gs[1]), stocks, cmap)
     else:
-        fig = plt.figure(figsize=(11, 5), layout="constrained")
+        fig = plt.figure(figsize=(16, 5.5), layout="constrained")
         _draw_sector_grid(fig.add_subplot(1, 1, 1), rows, spy_pct, cmap)
 
     fig.suptitle(f"Tancament de l'S&P 500 · {session.strftime('%d/%m/%Y')}",
