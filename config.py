@@ -195,6 +195,29 @@ BSKY_ACTOR = os.getenv("BSKY_ACTOR", "samfainavisual.bsky.social").strip()
 BSKY_HISTORY_FILE = OUTPUT_DIR / "bsky_history.json"
 
 # --------------------------------------------------------------------------- #
+# Borsa — heatmap diari del tancament de l'S&P 500                             #
+# --------------------------------------------------------------------------- #
+# Cinquena sortida (borsa.py): publica a un subreddit de finances (per defecte
+# r/lapelaeslapela) un heatmap dels 11 sectors GICS + comentari de DeepSeek.
+BORSA_SUBREDDIT = os.getenv("BORSA_SUBREDDIT", "lapelaeslapela").strip()
+# Històric independent: {"last_session": "YYYY-MM-DD"} per no duplicar (festius).
+BORSA_HISTORY_FILE = OUTPUT_DIR / "borsa_history.json"
+
+# --------------------------------------------------------------------------- #
+# Cloudflare R2 (hostatge d'imatges generades)                                 #
+# --------------------------------------------------------------------------- #
+# Per publicar un post d'IMATGE amb una imatge generada localment (p.ex. el
+# heatmap de la borsa) cal una URL pública. r2_upload.py puja el fitxer a un
+# bucket R2 via API S3-compatible i en retorna la URL (R2_PUBLIC_BASE + key).
+# R2_PUBLIC_BASE ha de ser l'URL pública del bucket (subdomini *.r2.dev actiu o
+# un domini propi connectat), sense barra final.
+R2_ACCOUNT_ID = os.getenv("R2_ACCOUNT_ID", "").strip()
+R2_ACCESS_KEY_ID = os.getenv("R2_ACCESS_KEY_ID", "").strip()
+R2_SECRET_ACCESS_KEY = os.getenv("R2_SECRET_ACCESS_KEY", "").strip()
+R2_BUCKET = os.getenv("R2_BUCKET", "").strip()
+R2_PUBLIC_BASE = os.getenv("R2_PUBLIC_BASE", "").strip().rstrip("/")
+
+# --------------------------------------------------------------------------- #
 # Reddit (publicació directa amb PRAW)                                          #
 # --------------------------------------------------------------------------- #
 # Credencials d'una "script app" creada a https://www.reddit.com/prefs/apps

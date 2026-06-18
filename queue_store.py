@@ -68,8 +68,11 @@ def _enqueue_worker(payload: dict) -> str:
         "tipus": payload.get("tipus", "text"),
         "title": payload.get("title", ""),
         "subreddit": payload.get("subreddit", ""),
-        "source": getattr(config, "QUEUE_SOURCE", "anime"),
-        "source_label": getattr(config, "QUEUE_SOURCE_LABEL", "anime"),
+        # La font pot venir dins del payload (cada pack la marca) amb fallback a
+        # la config global, perquè diversos packs convisquin al mateix .env.
+        "source": payload.get("source") or getattr(config, "QUEUE_SOURCE", "anime"),
+        "source_label": (payload.get("source_label")
+                         or getattr(config, "QUEUE_SOURCE_LABEL", "anime")),
         "created_at": payload.get("generated_at") or _now_iso(),
     }
     if payload.get("markdown"):
