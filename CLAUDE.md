@@ -8,7 +8,7 @@ tocar res relacionat amb la publicació.
 
 Bot que prepara contingut en català i el publica a Reddit (sobretot
 **r/AnimeCatala**; vegeu la 5a sortida, que va a un altre subreddit).
-Té **cinc sortides independents**, cadascuna amb el seu cron de GitHub Actions:
+Té **sis sortides independents**, cadascuna amb el seu cron de GitHub Actions:
 
 1. **Recull setmanal** (dilluns) — `main.py`. Fa webscraping de notícies d'anime
    (El Racó del Manga, Fansubs.cat, Anime Corner), les resumeix/tradueix amb
@@ -35,6 +35,15 @@ Té **cinc sortides independents**, cadascuna amb el seu cron de GitHub Actions:
    tenir-ne URL, i publica un **post d'imatge a r/lapelaeslapela** amb un comentari
    en català generat per DeepSeek (fallback determinista si DeepSeek cau). No
    publica en festius de borsa (idempotència per data de sessió).
+
+6. **Explorant Catalunya** (diari) — `explorant.py`. Pack multi-font (9 webs
+   catalanes d'activitats/escapades en família, cadascuna amb el seu calendari).
+   Un sol cron diari; el script decideix quines fonts «toquen» avui (per dia de
+   setmana / setmana del mes), en tria UNA fitxa nova, la resumeix amb DeepSeek,
+   **re-allotja la foto a R2** i la publica a **r/ExplorantCatalunya** com a post
+   d'imatge + primer comentari (resum + enllaç a la font en cursiva). Dedup amb
+   `output/explorant_history.json`. Fonts implementades: 7/9 (vegeu la secció de
+   fonts).
 
 Totes les sortides acaben **encuant un JSON a la cua del Cloudflare Worker**
 (`queue_store.enqueue`), i una **extensió de Chrome** llegeix la cua i publica a
@@ -115,6 +124,7 @@ El `payload` mínim que rep `enqueue()`:
 | `sx3_schedule.py` | Graella d'anime de SX3 (autònom): API de 3Cat → post Markdown + DeepSeek → `--push` encua al Worker. |
 | `bluesky_manga.py` | Novetats mensuals de manga (autònom): feed de Bluesky → selecció determinista (+xarxa DeepSeek acotada) → `--push` encua post d'imatge al Worker. |
 | `endevina_anime.py` | Joc «Endevina-ho, otaku!» (autònom): categoria rotativa + DeepSeek → post de text amb solució amb spoiler → cua del Worker. |
+| `explorant.py` | Pack «Explorant Catalunya» (autònom): 9 fonts d'activitats en família amb calendaris diferents → DeepSeek + foto a R2 → r/ExplorantCatalunya. |
 | `borsa.py` | Heatmap diari de la borsa (autònom): yfinance (11 sectors S&P) → matplotlib → R2 → DeepSeek → post d'imatge a r/lapelaeslapela. |
 | `r2_upload.py` | **Pujada d'imatges a R2 (genèric).** Per a posts d'imatge amb una imatge GENERADA (no una URL externa). Reutilitzable. |
 
@@ -180,6 +190,32 @@ els 11 ETFs SPDR de sector GICS (`XLK`, `XLC`, `XLY`, `XLP`, `XLE`, `XLF`, `XLV`
   falla, comentari determinista. Va al `comment_markdown` (primer comentari).
 - yfinance pot petar/limitar a CI: s'aplica la convenció de robustesa (fail-soft).
 
+## Font de dades d'Explorant Catalunya (multi-font)
+
+`explorant.py` té un registre `SOURCES` (clau → nom, web, parser) i un calendari
+`sources_due(date)` que decideix què publicar avui. **Un sol cron diari** n'hi ha
+prou. Cada parser retorna `list[Fitxa]`; es tria la primera no publicada (dedup per
+`source_key|url` a `explorant_history.json`). El resum prim s'enriqueix amb
+l'`og:description` de l'article abans de passar-lo a DeepSeek.
+
+| Font | Quan | Mètode | Estat |
+|---|---|---|---|
+| escapadaambnens (festes/fires del mes que ve) | dia 1 de mes | HTML (`a.item_festival`) | ✅ |
+| elmonensespera | dimarts | wp-json (RSS bloquejat) | ✅ |
+| sortirambnens | dimecres | RSS de categoria | ✅ |
+| surtdecasa | dijous | HTML (`.views-row`) | ✅ |
+| femturisme | divendres | — | ⏳ JS (incompatible amb CI) |
+| barcelona_nens | dissabte | HTML (`article`) | ✅ |
+| senders_feec | 1r dilluns | — | ⏳ mapa JS / sense API |
+| dexcursio | 2n dilluns | RSS + og:image | ✅ |
+| timeout | 3r dilluns | HTML (`article`) | ✅ |
+
+> **Per què 2 pendents:** femturisme i senders_feec pinten el contingut amb
+> JavaScript (o un mapa extern sense API pública), i el pipeline de CI fa servir
+> `requests` sense navegador, així que no es poden scrapejar tal com estan. El seu
+> parser és un stub que registra l'avís i no publica res (no peta). Per activar-los
+> caldria trobar-ne l'API interna o renderitzar amb un navegador (fora del CI).
+
 ## DeepSeek (opcional)
 
 S'usa per als resums/traduccions del recull setmanal i per a la intro + pregunta
@@ -200,6 +236,7 @@ Si no hi ha `DEEPSEEK_API_KEY`, tot funciona igual amb un fallback estàtic.
 | `.github/workflows/manga-novetats.yml` | dimarts 09:00 UTC | `python bluesky_manga.py --push --quiet` (novetats de manga) |
 | `.github/workflows/endevina-anime.yml` | dimecres i dissabte 18:00 UTC | `python endevina_anime.py --push --quiet` (joc otaku) |
 | `.github/workflows/borsa.yml` | dt–ds 04:00 UTC (05:00/06:00 CAT) | `python borsa.py --push --quiet` (heatmap de la borsa) |
+| `.github/workflows/explorant.yml` | diari 06:00 UTC | `python explorant.py --push --quiet` (el script tria què toca avui) |
 
 Tots tenen `workflow_dispatch` (botó **Run workflow** per provar-los a mà).
 **Secrets necessaris** (Settings ▸ Secrets ▸ Actions): `DEEPSEEK_API_KEY`,

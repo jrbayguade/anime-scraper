@@ -235,6 +235,35 @@ def parse_escapadaambnens(_today: date) -> list[Fitxa]:
     return fitxes
 
 
+def _parse_wpjson(base: str, key: str, name: str, web: str, limit: int = 6) -> list[Fitxa]:
+    """Parser genèric via l'API REST de WordPress (wp-json), amb imatge destacada."""
+    headers = {**config.HTTP_HEADERS, "Accept": "application/json"}
+    url = f"{base}/wp-json/wp/v2/posts?per_page={limit}&_embed=1"
+    try:
+        r = requests.get(url, headers=headers, timeout=config.REQUEST_TIMEOUT)
+        posts = r.json() if "json" in r.headers.get("Content-Type", "") else []
+    except Exception as exc:  # noqa: BLE001
+        log.warning("wp-json %s ha fallat: %s", base, exc)
+        return []
+    out: list[Fitxa] = []
+    for p in posts:
+        title = BeautifulSoup(p.get("title", {}).get("rendered", ""), "lxml").get_text(strip=True)
+        excerpt = _clean_summary(
+            BeautifulSoup(p.get("excerpt", {}).get("rendered", ""), "lxml").get_text(" ", strip=True))
+        media = (p.get("_embedded", {}) or {}).get("wp:featuredmedia", [])
+        img = media[0].get("source_url", "") if media and isinstance(media, list) else ""
+        if title and img:
+            out.append(Fitxa(key, name, web, title, p.get("link", ""), excerpt, img))
+    log.info("%s: %d posts (wp-json).", key, len(out))
+    return out
+
+
+def parse_elmonensespera(_today: date) -> list[Fitxa]:
+    """Escapades/viatges en família (API REST de WordPress; el feed RSS està bloquejat)."""
+    return _parse_wpjson("https://elmonensespera.com", "elmonensespera",
+                         "El món ens espera", "https://elmonensespera.com")
+
+
 def parse_sortirambnens(_today: date) -> list[Fitxa]:
     """Excursions amb nens (feed de la categoria, amb imatge al feed)."""
     return _parse_rss(
@@ -335,7 +364,7 @@ SOURCES: dict[str, dict] = {
     },
     "elmonensespera": {
         "name": "El món ens espera", "web": "https://elmonensespera.com",
-        "parse": _parser_pendent("elmonensespera"),
+        "parse": parse_elmonensespera,
     },
     "sortirambnens": {
         "name": "Sortir amb nens", "web": "https://www.sortirambnens.com",
