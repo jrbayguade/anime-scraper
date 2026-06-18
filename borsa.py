@@ -91,7 +91,8 @@ SYSTEM_PROMPT = (
     "diners i economia. Expliques el tancament de Wall Street en català natural, "
     "directe i sense floritures, per a gent interessada en finances però no "
     "necessàriament experta. Vas al gra, fas servir Markdown amb mesura i no "
-    "inventes mai dades: només comentes els números que et donen."
+    "inventes mai dades: només comentes els números que et donen. No facis servir "
+    "mai el guió llarg (—): fes servir comes, parèntesis, dos punts o frases curtes."
 )
 
 
@@ -224,7 +225,7 @@ def build_stock_rows(changes: dict[str, float],
 
 
 def build_title(session: date, spy_pct: float | None) -> str:
-    cap = f" — S&P 500 {fmt_pct(spy_pct)}" if spy_pct is not None else ""
+    cap = f" · S&P 500 {fmt_pct(spy_pct)}" if spy_pct is not None else ""
     return f"📊 Tancament de Wall Street · {session.strftime('%d/%m/%Y')}{cap}"
 
 
@@ -375,7 +376,8 @@ def build_comment(rows: list[SectorRow], spy_pct: float | None,
         "el to general del dia i destaca els sectors que més s'han mogut (amunt i "
         "avall) i, si ho saps amb certesa general, per què; el segon, una mica de "
         "context o què mirar. Acaba amb UNA pregunta perquè la gent comenti. Fes "
-        "servir Markdown amb mesura (alguna negreta). No posis títol ni encapçalament."
+        "servir Markdown amb mesura (alguna negreta). No posis títol ni "
+        "encapçalament. No facis servir mai el guió llarg (—)."
     )
     out = _deepseek_chat(
         [{"role": "system", "content": SYSTEM_PROMPT},
