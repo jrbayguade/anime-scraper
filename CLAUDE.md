@@ -27,64 +27,84 @@ Té **quatre sortides independents**, cadascuna amb el seu cron de GitHub Action
    `queue_store` (com la graella i les novetats). Sense fallback estàtic: si
    DeepSeek no respon, el procés acaba amb error (workflow vermell).
 
-Les altres tres acaben enviant un JSON al **mateix webhook de make.com**, que és qui
-publica a Reddit.
+Les quatre sortides acaben **encuant un JSON a la cua del Cloudflare Worker**
+(`queue_store.enqueue`), i una **extensió de Chrome** llegeix la cua i publica a
+Reddit.
 
 ## ⚠️ Com es publica a Reddit (FONAMENTAL)
 
 **No publiquem per l'API de Reddit.** No hi ha cap "script app" aprovada ni API
-key. La publicació la fa **make.com** amb la seva **connexió nativa de Reddit**
-(un compte de Reddit autoritzat dins de make).
+key. El camí actual és:
 
-Implicacions importants:
+```
+scraper → queue_store.enqueue() → POST /enqueue al Cloudflare Worker privat
+        → l'extensió de Chrome llegeix la cua → publicació (assistida) a Reddit
+```
 
 - **PRAW NO funciona.** Existeix `publisher.py` (publicació directa amb PRAW) i
   les variables `REDDIT_*` a `.env.example`, però són **codi heretat sense ús**:
   no hi ha credencials vàlides ni app aprovada. No proposis publicar per PRAW.
-- **make limita a 2 escenaris actius**, i ja estan tots dos ocupats (l'scraper
-  d'anime i un altre de newsletters). **No es pot crear un tercer escenari.**
-- **Un sol webhook per a tot el canal.** L'escenari de make que rep el webhook
-  només té **un pas després del webhook: publicar a r/AnimeCatala**. Per tant
-  **qualsevol post per a aquell canal pot reutilitzar el mateix webhook**
-  (`MAKE_WEBHOOK_URL`), sense escenaris nous, sense routers i sense marcadors de
-  tipus. El recull setmanal, la graella de SX3 i les novetats de manga hi envien.
+- **make.com és LLEGAT.** Hi ha encara `MAKE_WEBHOOK_URL`, `push_to_make()` (a
+  `sx3_schedule.py` i `bluesky_manga.py`) i `config.MAKE_BODY_MAX_ENCODED`, però
+  **cap camí `--push` els fa servir**: tots criden `queue_store.enqueue()`. Es va
+  abandonar make (límit de 2 escenaris i el seu mòdul de Reddit ficava el text
+  dins la URL i petava amb HTTP 414 si passava de ~7,5 KB). No proposis tornar-hi.
+- **La cua NO està lligada a r/AnimeCatala.** Cada ítem porta el seu propi camp
+  `subreddit`, i un `source`/`source_label` perquè l'extensió agrupi per pack
+  (`config.QUEUE_SOURCE` / `QUEUE_SOURCE_LABEL`). Així una sortida nova pot
+  publicar a **un altre subreddit** sense canviar la canonada (només cal tenir
+  permís per postejar-hi des del compte que fa servir l'extensió).
 
-### Contracte del webhook
+### El Worker és genèric i reutilitzable
 
-Envia un JSON a `MAKE_WEBHOOK_URL` amb (com a mínim) aquestes claus, que és el
-que l'escenari mapeja:
+`queue_store.py` **no conté res específic d'anime**: és copiable tal qual a futurs
+packs. Si `WORKER_URL` + `WORKER_WRITE_TOKEN` estan definits, `enqueue()` publica
+al Worker i prou (no toca `queue/` ni GitHub). Si no, escriu fitxers a `queue/`
+(fallback local / tests offline).
+
+### Contracte de la cua (`queue_store.enqueue`)
+
+El `payload` mínim que rep `enqueue()`:
 
 ```json
-{ "subreddit": "AnimeCatala", "tipus": "text", "title": "…", "markdown": "… (cos del post) …" }
+{
+  "generated_at": "2026-06-18T08:53:34",
+  "tipus": "text",
+  "title": "…",
+  "subreddit": "AnimeCatala",
+  "markdown": "… (cos del post, només si tipus=text) …"
+}
 ```
 
-El camp **`tipus`** governa un **router** dins de make (el mòdul de Reddit no
-accepta posts d'imatge amb URL+text barrejats, així que cal encaminar):
-- `"text"` → post de text (recull setmanal i graella de SX3): mapeja `markdown`.
-- `"imatge"` → post d'imatge (novetats de manga): mapeja `url` (sense `markdown`,
-  només `title` + `url`).
+- **`tipus: "text"`** → post de text: s'usa `markdown` (cos complet ja muntat).
+- **`tipus: "imatge"`** → post d'imatge: s'usa `url` (la imatge). Un post d'imatge
+  de Reddit **no té cos de text**.
+- **`comment_markdown`** (opcional, qualsevol `tipus`) → text per a un **primer
+  comentari** al post. Aquest és el mecanisme per acompanyar una imatge amb text:
+  post d'imatge + comentari. L'índex en porta el flag `has_comment`. *(Pendent de
+  confirmar que l'extensió publica aquest comentari; el seu codi viu en un altre
+  repo.)*
 
-`markdown` és el cos complet del post (ja muntat). Hi pot haver més claus; make
-ignora les que no mapeja.
+`enqueue()` mapeja `generated_at` → `created_at` del Worker i hi afegeix
+`source`/`source_label`.
 
-### Límit de llargada
-
-El mòdul de make envia el text **dins de la URL** i peta amb **HTTP 414** si
-supera ~7500 bytes un cop codificat (`config.MAKE_BODY_MAX_ENCODED`). Mantingues
-els posts compactes. La graella de SX3 ho té present: agrupa per sèrie amb blocs
-horaris (no una línia per episodi) i queda molt per sota del límit (~3 KB).
+> **Imatges generades (p.ex. un heatmap):** la cua espera una `url` per als posts
+> d'imatge, no un fitxer. El flux de manga funciona perquè la imatge ja viu al CDN
+> de Bluesky. Una imatge generada localment (matplotlib, etc.) **s'ha d'hostatjar
+> primer** (Cloudflare R2 seria el camí natural) per tenir-ne una URL pública.
 
 ## Fitxers clau
 
 | Fitxer | Rol |
 |---|---|
-| `config.py` | Configuració central: fonts, claus d'API, `MAKE_WEBHOOK_URL`, subreddit, límits. Tot des de `.env`. |
+| `config.py` | Configuració central: fonts, claus d'API, `WORKER_URL`/`WORKER_WRITE_TOKEN`, `QUEUE_SOURCE`, subreddit, límits. Tot des de `.env`. |
+| `queue_store.py` | **Cua de publicació (genèric).** `enqueue()` → POST al Worker (o fitxers a `queue/` com a fallback). Reutilitzable per altres packs. |
 | `scraper.py` | Recull setmanal: descàrrega i parsing de fonts (un parser per font, registrat a `PARSERS`). |
-| `processor.py` | Recull setmanal: resum/traducció amb DeepSeek, munta el Markdown, envia a make, històric. |
+| `processor.py` | Recull setmanal: resum/traducció amb DeepSeek, munta el Markdown, històric. (`push_to_make` hi és com a llegat sense ús.) |
 | `publisher.py` | Publicació directa amb PRAW. **Heretat / sense ús** (vegeu secció de Reddit). |
-| `main.py` | Punt d'entrada del recull setmanal. |
-| `sx3_schedule.py` | Graella d'anime de SX3 (autònom): API de 3Cat → post Markdown + DeepSeek → `--push` a make. |
-| `bluesky_manga.py` | Novetats mensuals de manga (autònom): feed de Bluesky → selecció determinista (+xarxa DeepSeek acotada) → `--push` a make com a post d'imatge. |
+| `main.py` | Punt d'entrada del recull setmanal → `queue_store.enqueue()`. |
+| `sx3_schedule.py` | Graella d'anime de SX3 (autònom): API de 3Cat → post Markdown + DeepSeek → `--push` encua al Worker. |
+| `bluesky_manga.py` | Novetats mensuals de manga (autònom): feed de Bluesky → selecció determinista (+xarxa DeepSeek acotada) → `--push` encua post d'imatge al Worker. |
 | `endevina_anime.py` | Joc «Endevina-ho, otaku!» (autònom): categoria rotativa + DeepSeek → post de text amb solució amb spoiler → cua del Worker. |
 
 ## Font de dades de SX3
@@ -149,9 +169,9 @@ Si no hi ha `DEEPSEEK_API_KEY`, tot funciona igual amb un fallback estàtic.
 | `.github/workflows/manga-novetats.yml` | dimarts 09:00 UTC | `python bluesky_manga.py --push --quiet` (novetats de manga) |
 | `.github/workflows/endevina-anime.yml` | dimecres i dissabte 18:00 UTC | `python endevina_anime.py --push --quiet` (joc otaku) |
 
-Tots tres tenen `workflow_dispatch` (botó **Run workflow** per provar-los a mà).
-**Secrets necessaris** (Settings ▸ Secrets ▸ Actions): `DEEPSEEK_API_KEY` i
-`MAKE_WEBHOOK_URL` (compartits pels tres fluxos).
+Tots tenen `workflow_dispatch` (botó **Run workflow** per provar-los a mà).
+**Secrets necessaris** (Settings ▸ Secrets ▸ Actions): `DEEPSEEK_API_KEY`,
+`WORKER_URL` i `WORKER_WRITE_TOKEN` (compartits pels quatre fluxos).
 
 > Nota DST: el cron de GitHub és sempre UTC. 08:50 UTC = 09:50 a l'hivern /
 > 10:50 a l'estiu a Catalunya. No es pot fixar l'hora local tot l'any amb un sol cron.
@@ -160,21 +180,21 @@ Tots tres tenen `workflow_dispatch` (botó **Run workflow** per provar-los a mà
 
 ```bash
 # Recull setmanal
-python main.py                         # genera i envia a make
+python main.py                         # genera i encua al Worker
 python main.py --no-llm                # sense DeepSeek (extractes en brut)
 
 # Graella de SX3
 python sx3_schedule.py --from-next-friday   # finestra real dv→dj (CSV + preview)
 python sx3_schedule.py --post               # imprimeix el post Markdown (no publica)
-python sx3_schedule.py --push               # envia el post a make (→ Reddit)
-python sx3_schedule.py --from-next-friday --manual  # publicació manual assistida (sense make)
+python sx3_schedule.py --push               # encua el post al Worker (→ Reddit)
+python sx3_schedule.py --from-next-friday --manual  # publicació manual assistida (sense extensió)
 python sx3_schedule.py --debug              # estadístiques crues de l'API
 
 # Novetats de manga (Bluesky)
 python bluesky_manga.py --debug             # estadístiques crues del feed
 python bluesky_manga.py --post              # preview (títol + URL d'imatge)
-python bluesky_manga.py --push              # publica a make si hi ha post nou
-python bluesky_manga.py --manual            # publicació manual assistida (sense make)
+python bluesky_manga.py --push              # encua al Worker si hi ha post nou
+python bluesky_manga.py --manual            # publicació manual assistida (sense extensió)
 python bluesky_manga.py --no-llm --post     # només filtre determinista
 
 # Joc «Endevina-ho, otaku!»
@@ -182,8 +202,8 @@ python endevina_anime.py --post             # preview del joc (no encua res)
 python endevina_anime.py --push             # genera i encua a la cua del Worker
 ```
 
-> **Publicació manual (`--manual`):** quan la connexió de Reddit de make no
-> funciona, `bluesky_manga.py --manual` copia el títol al porta-retalls, baixa la
+> **Publicació manual (`--manual`):** alternativa a l'extensió (publicar del tot
+> a mà). `bluesky_manga.py --manual` copia el títol al porta-retalls, baixa la
 > imatge a `output/manga-<mes>.<ext>` i obre Reddit; tu enganxes el títol, puges
 > la imatge i cliques Post. Equivalent a `publish_manual.py` del recull setmanal.
 > (La imatge de Bluesky sol venir en **WebP**; si Reddit el rebutja, cal
@@ -196,4 +216,6 @@ python endevina_anime.py --push             # genera i encua a la cua del Worker
   registra al log i es continua (vegeu `scrape_source`, fallbacks de DeepSeek).
 - **Secrets only via `.env`** (carregat a `config.py`); mai hardcodejats ni
   commitejats. `.env` està al `.gitignore`; `.env.example` documenta les claus.
-- Quan toquis la publicació, recorda: **un sol webhook de make per al canal**.
+- Quan toquis la publicació, recorda: **tot passa per `queue_store.enqueue()`**
+  (cua del Worker + extensió). Cada ítem porta el seu `subreddit`, així que el
+  destí no està fixat a r/AnimeCatala. make/PRAW són llegat sense ús.
