@@ -122,7 +122,7 @@ def summarize_items(items: list[NewsItem]) -> None:
     system = (
         "Ets un redactor d'una comunitat catalana d'anime i manga. Escrius en "
         "català natural, clar i proper. Tradueixes al català qualsevol text en "
-        "anglès."
+        "anglès. No facis servir mai el guió llarg (—)."
     )
     user = (
         "Per a cada notícia, escriu un resum molt curt en català: UNA sola frase "
@@ -172,7 +172,8 @@ def build_intro(items: list[NewsItem], week_start: datetime, week_end: datetime)
     raw = _deepseek_chat(
         [
             {"role": "system", "content": "Ets el community manager d'una "
-             "comunitat catalana d'anime. Escrius en català, to proper i animat."},
+             "comunitat catalana d'anime. Escrius en català, to proper i animat. "
+             "No facis servir mai el guió llarg (—)."},
             {"role": "user", "content":
                 f"Escriu una introducció breu (2-3 frases, amb 1-2 emojis) per a "
                 f"un recull setmanal de novetats d'anime i manga en català "

@@ -399,7 +399,8 @@ def generate_intro_question(shows: list[str], first: datetime, last: datetime,
     raw = _deepseek_chat(
         [
             {"role": "system", "content": "Ets el community manager d'una comunitat "
-             "catalana d'anime. Escrius en català, to proper i animat."},
+             "catalana d'anime. Escrius en català, to proper i animat. No facis "
+             "servir mai el guió llarg (—)."},
             {"role": "user", "content":
                 f"Per a un post amb la graella d'anime del canal SX3 del {rang}, "
                 f"dona'm DUES coses:\n"

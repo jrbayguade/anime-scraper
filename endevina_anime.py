@@ -47,7 +47,8 @@ SYSTEM_PROMPT = (
     "excessivament formals i introduccions de farciment tipus «és un plaer "
     "ajudar-te». Vas al gra, fas servir Markdown amb gràcia (negretes, llistes) i "
     "tens un punt fan, gamberro i apassionat. Coneixes des dels clàssics fins a "
-    "joies poc conegudes, no només els quatre mainstream de sempre."
+    "joies poc conegudes, no només els quatre mainstream de sempre. No facis "
+    "servir mai el guió llarg (—)."
 )
 
 # Categories rotatives: garanteixen que els temes vagin variant a cada partida.
