@@ -674,11 +674,11 @@ def main() -> int:
             return 1
         try:
             image_url = rehost_image(f)
+            payload = build_payload(f, image_url, comment)
+            item_id = queue_store.enqueue(payload)
         except Exception as exc:  # noqa: BLE001
-            log.warning("Font «%s»: no s'ha pogut re-allotjar la imatge: %s", key, exc)
+            log.warning("Font «%s»: no s'ha pogut publicar (%s); es continua.", key, exc)
             continue
-        payload = build_payload(f, image_url, comment)
-        item_id = queue_store.enqueue(payload)
         posted.add(f.key())
         print(f"✅ Encuat [{f.source_name}]: {f.title} → {item_id}")
         any_done = True

@@ -199,7 +199,9 @@ BSKY_HISTORY_FILE = OUTPUT_DIR / "bsky_history.json"
 # --------------------------------------------------------------------------- #
 # Cinquena sortida (borsa.py): publica a un subreddit de finances (per defecte
 # r/lapelaeslapela) un heatmap dels 11 sectors GICS + comentari de DeepSeek.
-BORSA_SUBREDDIT = os.getenv("BORSA_SUBREDDIT", "lapelaeslapela").strip()
+# `or` (no només default de getenv): si el secret de CI existeix però és buit, el
+# getenv retorna "" (no el default) i el subreddit quedaria buit (el Worker el rebutja).
+BORSA_SUBREDDIT = os.getenv("BORSA_SUBREDDIT", "").strip() or "lapelaeslapela"
 # Històric independent: {"last_session": "YYYY-MM-DD"} per no duplicar (festius).
 BORSA_HISTORY_FILE = OUTPUT_DIR / "borsa_history.json"
 
@@ -209,7 +211,7 @@ BORSA_HISTORY_FILE = OUTPUT_DIR / "borsa_history.json"
 # Pack que scrapeja diverses webs catalanes (cadascuna amb el seu calendari),
 # en resumeix una amb DeepSeek i la publica a r/ExplorantCatalunya com a post
 # d'imatge (foto re-allotjada a R2) + primer comentari (resum + enllaç a la font).
-EXPLORANT_SUBREDDIT = os.getenv("EXPLORANT_SUBREDDIT", "ExplorantCatalunya").strip()
+EXPLORANT_SUBREDDIT = os.getenv("EXPLORANT_SUBREDDIT", "").strip() or "ExplorantCatalunya"
 EXPLORANT_HISTORY_FILE = OUTPUT_DIR / "explorant_history.json"
 
 # --------------------------------------------------------------------------- #
