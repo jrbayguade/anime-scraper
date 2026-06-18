@@ -205,13 +205,18 @@ l'`og:description` de l'article abans de passar-lo a DeepSeek.
 | elmonensespera | dimarts | wp-json (`/wp-json/wp/v2/posts`; el RSS està bloquejat) |
 | sortirambnens | dimecres | RSS de categoria |
 | surtdecasa | dijous | HTML (`.views-row`) |
-| femturisme | divendres | RSS a **`/rss`** (no `/feed/`) |
+| totnens | divendres | RSS (`/feed/`) — substitueix femturisme |
 | barcelona_nens | dissabte | HTML (`article`) |
 | senders_feec | 1r dilluns | admin-ajax **`get_senders`** amb nonce de la home + sessió |
 | dexcursio | 2n dilluns | RSS + og:image |
 | timeout | 3r dilluns | HTML (`article`) |
 
-> **Trucs no obvis:** femturisme exposa l'RSS a `/rss` (no `/feed/`); senders.feec
+> **femturisme** quedava rere **Cloudflare**, que bloqueja les IPs de datacenter
+> (403 «Just a moment…») i per tant no funciona des de GitHub Actions; el divendres
+> el cobreix **totnens.cat** (LiteSpeed, RSS net). El parser de femturisme es manté
+> per a ús local/residencial però no està programat.
+>
+> **Trucs no obvis:** senders.feec
 > carrega el mapa via `admin-ajax.php?action=get_senders`, que necessita el `nonce`
 > incrustat a la home i les cookies de la mateixa sessió; elmonensespera té el feed
 > RSS bloquejat però sí l'API wp-json. Les imatges WebP es converteixen a JPG en

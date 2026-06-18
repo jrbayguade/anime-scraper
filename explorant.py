@@ -283,9 +283,20 @@ def parse_dexcursio(_today: date) -> list[Fitxa]:
 
 
 def parse_femturisme(_today: date) -> list[Fitxa]:
-    """Notícies/propostes de turisme (feed RSS a /rss, no /feed/)."""
+    """Notícies/propostes de turisme (feed RSS a /rss, no /feed/).
+
+    NOTA: femturisme.cat està rere Cloudflare i bloqueja les IPs de datacenter
+    (403 «Just a moment…»), així que NO funciona des de GitHub Actions. Es manté
+    per a ús local/residencial; al calendari el divendres el cobreix `totnens`.
+    """
     return _parse_rss("https://femturisme.cat/rss", "femturisme",
                       "Fem Turisme", "https://femturisme.cat")
+
+
+def parse_totnens(_today: date) -> list[Fitxa]:
+    """Activitats i plans en família (totnens.cat; RSS, sense Cloudflare)."""
+    return _parse_rss("https://totnens.cat/feed/", "totnens",
+                      "Totnens", "https://totnens.cat")
 
 
 def _img_src(node) -> str:
@@ -466,7 +477,11 @@ SOURCES: dict[str, dict] = {
     },
     "femturisme": {
         "name": "Fem Turisme", "web": "https://femturisme.cat",
-        "parse": parse_femturisme,
+        "parse": parse_femturisme,   # CF-blocat des de CI; no programat (vegeu totnens)
+    },
+    "totnens": {
+        "name": "Totnens", "web": "https://totnens.cat",
+        "parse": parse_totnens,
     },
 }
 
@@ -486,7 +501,7 @@ def sources_due(d: date) -> list[str]:
     if dow == 3:
         due.append("surtdecasa")         # dijous
     if dow == 4:
-        due.append("femturisme")         # divendres
+        due.append("totnens")            # divendres (substitueix femturisme, CF-blocat)
     if dow == 5:
         due.append("barcelona_nens")     # dissabte
     if dow == 0 and week_of_month == 1:
@@ -633,6 +648,7 @@ _PROBE_URL = {
     "surtdecasa": "https://surtdecasa.cat/agenda/cap-de-setmana",
     "barcelona_nens": "https://www.barcelona.cat/capdesetmana/ca/nens-i-nenes",
     "femturisme": "https://femturisme.cat/rss",
+    "totnens": "https://totnens.cat/feed/",
 }
 
 

@@ -14,7 +14,7 @@ def test_sources_due_per_day():
     assert ex.sources_due(date(2026, 6, 9)) == ["elmonensespera"]  # dimarts
     assert ex.sources_due(date(2026, 6, 10)) == ["sortirambnens"]  # dimecres
     assert ex.sources_due(date(2026, 6, 18)) == ["surtdecasa"]     # dijous
-    assert ex.sources_due(date(2026, 6, 19)) == ["femturisme"]     # divendres
+    assert ex.sources_due(date(2026, 6, 19)) == ["totnens"]        # divendres
     assert ex.sources_due(date(2026, 6, 20)) == ["barcelona_nens"] # dissabte
     assert ex.sources_due(date(2026, 6, 21)) == []                 # diumenge
 
