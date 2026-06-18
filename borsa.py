@@ -484,7 +484,10 @@ def main() -> int:
 
     png = render_image(session, rows, spy_pct, stocks)
     comment = build_comment(rows, spy_pct, use_llm=use_llm)
-    key = f"borsa/{session.isoformat()}.png"
+    # Clau ÚNICA per post: si es reutilitza la mateixa URL (un nom per dia),
+    # Reddit cacheja la previsualització i segueix mostrant la imatge antiga
+    # encara que R2 ja tingui la nova. Un sufix horari força una URL nova.
+    key = f"borsa/{session.isoformat()}-{datetime.now():%H%M%S}.png"
 
     if not args.push:
         out_path = config.OUTPUT_DIR / f"borsa-{session.isoformat()}.png"
