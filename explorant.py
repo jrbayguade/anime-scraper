@@ -43,6 +43,7 @@ import sys
 from dataclasses import dataclass
 from datetime import date, datetime
 
+import feedparser
 import requests
 from bs4 import BeautifulSoup
 
@@ -106,6 +107,71 @@ def _get_soup(url: str) -> BeautifulSoup | None:
         return None
 
 
+def _clean_summary(text: str) -> str:
+    """Talla les cues de WordPress («Read More», «L'entrada … ha aparegut primer a …»)."""
+    for marker in ("Read More", " La entrada ", " L'entrada ", " The post ",
+                   "aparece primero", "ha aparegut primer", "appeared first"):
+        i = text.find(marker)
+        if i != -1:
+            text = text[:i]
+    return text.strip(" …·-").strip()
+
+
+def _og_image(url: str) -> str:
+    soup = _get_soup(url)
+    if not soup:
+        return ""
+    m = soup.find("meta", property="og:image") or soup.find("meta", attrs={"name": "og:image"})
+    return (m.get("content") or "").strip() if m else ""
+
+
+def _entry_image(entry, og_fallback: bool) -> str:
+    """Treu la millor imatge d'una entrada RSS (evita emojis/ploma de WordPress)."""
+    def _ok(u: str) -> bool:
+        return bool(u) and "s.w.org" not in u and "/emoji/" not in u
+    for m in (entry.get("media_content") or []) + (entry.get("media_thumbnail") or []):
+        if _ok(m.get("url", "")):
+            return m["url"]
+    for enc in entry.get("enclosures") or []:
+        if "image" in enc.get("type", "") and _ok(enc.get("href", "")):
+            return enc["href"]
+    html = ""
+    if entry.get("content"):
+        html = entry["content"][0].get("value", "")
+    html = html or entry.get("summary", "")
+    img = BeautifulSoup(html, "lxml").find("img")
+    if img and _ok(img.get("src", "")):
+        return img["src"]
+    if og_fallback and entry.get("link"):
+        return _og_image(entry["link"])
+    return ""
+
+
+def _parse_rss(feed_url: str, key: str, name: str, web: str,
+               *, og_image: bool = False, limit: int = 8) -> list[Fitxa]:
+    """Parser genèric d'un feed RSS de WordPress → list[Fitxa]."""
+    try:
+        raw = requests.get(feed_url, headers=config.HTTP_HEADERS,
+                           timeout=config.REQUEST_TIMEOUT)
+        d = feedparser.parse(raw.content)
+    except Exception as exc:  # noqa: BLE001
+        log.warning("RSS %s ha fallat: %s", feed_url, exc)
+        return []
+    out: list[Fitxa] = []
+    for e in d.entries[:limit]:
+        summary = BeautifulSoup(e.get("summary", ""), "lxml").get_text(" ", strip=True)
+        summary = _clean_summary(summary)
+        out.append(Fitxa(
+            source_key=key, source_name=name, source_web=web,
+            title=(e.get("title") or "").strip(),
+            url=(e.get("link") or "").strip(),
+            summary=summary,
+            image_url=_entry_image(e, og_image),
+        ))
+    log.info("%s: %d entrades del feed.", key, len(out))
+    return out
+
+
 # --------------------------------------------------------------------------- #
 # Fonts — parsers (un per web). Implementades vs stubs (pendents).             #
 # --------------------------------------------------------------------------- #
@@ -155,6 +221,20 @@ def parse_escapadaambnens(_today: date) -> list[Fitxa]:
     return fitxes
 
 
+def parse_sortirambnens(_today: date) -> list[Fitxa]:
+    """Excursions amb nens (feed de la categoria, amb imatge al feed)."""
+    return _parse_rss(
+        "https://www.sortirambnens.com/excursions-amb-nens/feed/",
+        "sortirambnens", "Sortir amb nens", "https://www.sortirambnens.com")
+
+
+def parse_dexcursio(_today: date) -> list[Fitxa]:
+    """Excursions (feed general; imatge real via og:image de l'article)."""
+    return _parse_rss(
+        "https://dexcursio.net/feed/",
+        "dexcursio", "D'excursió", "https://dexcursio.net", og_image=True)
+
+
 def _parser_pendent(key: str):
     """Crea un stub de parser que registra que la font encara no està feta."""
     def _stub(_today: date) -> list[Fitxa]:
@@ -175,7 +255,7 @@ SOURCES: dict[str, dict] = {
     },
     "sortirambnens": {
         "name": "Sortir amb nens", "web": "https://www.sortirambnens.com",
-        "parse": _parser_pendent("sortirambnens"),
+        "parse": parse_sortirambnens,
     },
     "senders_feec": {
         "name": "Senders FEEC", "web": "https://senders.feec.cat",
@@ -183,7 +263,7 @@ SOURCES: dict[str, dict] = {
     },
     "dexcursio": {
         "name": "D'excursió", "web": "https://dexcursio.net",
-        "parse": _parser_pendent("dexcursio"),
+        "parse": parse_dexcursio,
     },
     "timeout": {
         "name": "Time Out Barcelona", "web": "https://www.timeout.cat",
