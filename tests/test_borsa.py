@@ -42,6 +42,26 @@ def test_build_rows_sorted_and_labeled_without_spy():
     assert all(r.ticker != "SPY" for r in rows)  # SPY no és un sector
 
 
+def test_build_stock_rows_sorted_by_market_cap():
+    changes = {"AAPL": 1.0, "MSFT": -0.5, "NVDA": 2.0}
+    caps = {"AAPL": 3.0e12, "MSFT": 3.2e12, "NVDA": 2.8e12}
+    stocks = borsa.build_stock_rows(changes, caps)
+    assert [s.ticker for s in stocks] == ["MSFT", "AAPL", "NVDA"]  # per capitalització
+    assert stocks[0].name == "Microsoft"
+    assert stocks[1].pct == 1.0
+
+
+def test_build_stock_rows_needs_both_pct_and_cap():
+    # AAPL té cap però no %; MSFT té % però no cap → cap dels dos surt.
+    stocks = borsa.build_stock_rows({"MSFT": 1.0}, {"AAPL": 3.0e12})
+    assert stocks == []
+
+
+def test_build_stock_rows_empty_when_no_caps():
+    # Fail-soft: sense capitalitzacions, el treemap es desactiva.
+    assert borsa.build_stock_rows({"AAPL": 1.0, "MSFT": -0.5}, {}) == []
+
+
 def test_build_title_includes_date_and_spy():
     title = borsa.build_title(date(2026, 6, 17), 1.0)
     assert "17/06/2026" in title

@@ -5,7 +5,8 @@ feedparser>=6.0
 python-dateutil>=2.9
 python-dotenv>=1.0
 praw>=7.7
-# Borsa (borsa.py): dades de mercat, heatmap i pujada a R2.
+# Borsa (borsa.py): dades de mercat, heatmap/treemap i pujada a R2.
 yfinance>=0.2.40
 matplotlib>=3.8
+squarify>=0.4
 boto3>=1.34

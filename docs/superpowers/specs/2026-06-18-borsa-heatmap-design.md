@@ -140,10 +140,24 @@ determinista es prova sense DeepSeek (`--no-llm`).
 - `CLAUDE.md`: afegir la 5a sortida a «Què és», a la taula de fitxers, a la taula
   de workflows i una secció breu «Font de dades de la borsa».
 
+## Addició: treemap estil Finviz (sota el heatmap de sectors)
+
+A petició posterior, la imatge porta **dues parts** en un sol PNG:
+
+1. **Dalt:** el heatmap dels 11 sectors GICS (clamp ±2%).
+2. **Sota:** un **treemap estil Finviz** dels ≈40 principals valors de l'S&P 500
+   (`CONSTITUENTS`, llista calibrable), amb la **mida del quadre per capitalització**
+   (yfinance `fast_info`, en viu) i el **color pel % del dia** (clamp ±3%, els
+   valors individuals es mouen més). Layout amb `squarify`.
+
+Funcions noves: `fetch_market_caps()` (I/O, fail-soft per ticker) i
+`build_stock_rows()` (pura, ordena per capitalització). El render passa a
+`render_image(session, rows, spy_pct, stocks)`: amb `stocks` dibuixa les dues
+parts; **sense `stocks` (fail-soft) dibuixa només el heatmap de sectors**, així
+una caiguda de les capitalitzacions no impedeix publicar.
+
 ## Fora d'abast (YAGNI)
 
-- Treemap estil Finviz (mida per capitalització): es va descartar a favor dels 11
-  sectors.
 - Altres índexs (Nasdaq, Dow, Europa): es pot afegir més endavant si interessa.
 - Hostatge alternatiu (GitHub raw, Imgur): es va triar R2.
 - Tornar a make/PRAW: llegat sense ús.

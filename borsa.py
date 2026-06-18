@@ -59,7 +59,31 @@ SECTORS: list[tuple[str, str]] = [
     ("XLU", "Serveis públics"),
 ]
 _LABELS = dict(SECTORS)
-_ALL_TICKERS = [SPY] + [t for t, _ in SECTORS]
+_SECTOR_TICKERS = [SPY] + [t for t, _ in SECTORS]
+
+# Principals valors de l'S&P 500 (≈top 40 per pes) per al treemap estil Finviz.
+# Llista calibrable: (ticker yfinance, nom curt per a l'etiqueta). Una sola classe
+# d'Alphabet (GOOGL) per no duplicar. La mida del quadre la marca la capitalització
+# (en viu via yfinance), no aquest ordre.
+CONSTITUENTS: list[tuple[str, str]] = [
+    ("AAPL", "Apple"), ("MSFT", "Microsoft"), ("NVDA", "Nvidia"),
+    ("AMZN", "Amazon"), ("GOOGL", "Alphabet"), ("META", "Meta"),
+    ("AVGO", "Broadcom"), ("TSLA", "Tesla"), ("BRK-B", "Berkshire"),
+    ("JPM", "JPMorgan"), ("LLY", "Eli Lilly"), ("V", "Visa"),
+    ("UNH", "UnitedHealth"), ("XOM", "Exxon"), ("MA", "Mastercard"),
+    ("COST", "Costco"), ("HD", "Home Depot"), ("PG", "P&G"),
+    ("JNJ", "J&J"), ("WMT", "Walmart"), ("NFLX", "Netflix"),
+    ("BAC", "Bank of America"), ("ABBV", "AbbVie"), ("CRM", "Salesforce"),
+    ("ORCL", "Oracle"), ("CVX", "Chevron"), ("KO", "Coca-Cola"),
+    ("MRK", "Merck"), ("AMD", "AMD"), ("PEP", "PepsiCo"),
+    ("ADBE", "Adobe"), ("LIN", "Linde"), ("MCD", "McDonald's"),
+    ("CSCO", "Cisco"), ("ACN", "Accenture"), ("ABT", "Abbott"),
+    ("GE", "GE"), ("WFC", "Wells Fargo"), ("QCOM", "Qualcomm"),
+    ("TXN", "Texas Instr."),
+]
+_CONSTITUENT_NAMES = dict(CONSTITUENTS)
+_CONSTITUENT_TICKERS = [t for t, _ in CONSTITUENTS]
+_ALL_TICKERS = _SECTOR_TICKERS + _CONSTITUENT_TICKERS
 
 # To de marca per al comentari (català, comunitat de finances, sense farciment).
 SYSTEM_PROMPT = (
@@ -75,6 +99,14 @@ SYSTEM_PROMPT = (
 class SectorRow:
     label: str
     ticker: str
+    pct: float
+
+
+@dataclass
+class Stock:
+    ticker: str
+    name: str
+    market_cap: float
     pct: float
 
 
@@ -116,6 +148,25 @@ def fetch_closes(tickers: list[str]) -> dict[str, list[tuple[date, float]]]:
     return out
 
 
+def fetch_market_caps(tickers: list[str]) -> dict[str, float]:
+    """Capitalització en viu per ticker (yfinance fast_info). Fail-soft per ticker.
+
+    Si un ticker falla o no en té, simplement no surt al diccionari (el treemap
+    l'ignorarà). Si falla tot, retorna {} i el treemap es desactiva sol.
+    """
+    import yfinance as yf
+
+    caps: dict[str, float] = {}
+    for t in tickers:
+        try:
+            cap = yf.Ticker(t).fast_info.get("market_cap")
+            if cap:
+                caps[t] = float(cap)
+        except Exception:  # noqa: BLE001
+            log.warning("Sense capitalització per a %s", t)
+    return caps
+
+
 # --------------------------------------------------------------------------- #
 # Lògica pura                                                                  #
 # --------------------------------------------------------------------------- #
@@ -154,28 +205,42 @@ def build_rows(changes: dict[str, float]) -> list[SectorRow]:
     return rows
 
 
+def build_stock_rows(changes: dict[str, float],
+                     caps: dict[str, float]) -> list[Stock]:
+    """Valors amb % i capitalització, ordenats de més gran a més petit (treemap).
+
+    Només inclou els que tenen alhora % i capitalització; si no n'hi ha cap, el
+    treemap es desactiva (només es publica el heatmap de sectors).
+    """
+    stocks = [
+        Stock(t, _CONSTITUENT_NAMES[t], caps[t], changes[t])
+        for t, _ in CONSTITUENTS
+        if t in changes and t in caps
+    ]
+    stocks.sort(key=lambda s: s.market_cap, reverse=True)
+    return stocks
+
+
 def build_title(session: date, spy_pct: float | None) -> str:
     cap = f" — S&P 500 {fmt_pct(spy_pct)}" if spy_pct is not None else ""
     return f"📊 Tancament de Wall Street · {session.strftime('%d/%m/%Y')}{cap}"
 
 
 # --------------------------------------------------------------------------- #
-# Heatmap (matplotlib → PNG bytes)                                            #
+# Imatge (matplotlib → PNG bytes): heatmap de sectors + treemap de valors      #
 # --------------------------------------------------------------------------- #
-def render_heatmap(session: date, rows: list[SectorRow],
-                   spy_pct: float | None) -> bytes:
-    """Pinta el heatmap (caselles per sector + resum S&P) i retorna el PNG."""
-    import io
+def _text_color(rgba) -> str:
+    """Blanc o negre segons la lluminositat del fons, per llegibilitat."""
+    r_, g_, b_, _ = rgba
+    return "white" if (0.299 * r_ + 0.587 * g_ + 0.114 * b_) < 0.55 else "black"
 
-    import matplotlib
-    matplotlib.use("Agg")  # backend headless (CI sense pantalla)
-    import matplotlib.pyplot as plt
+
+def _draw_sector_grid(ax, rows: list[SectorRow], spy_pct: float | None, cmap) -> None:
+    """Graella de caselles: resum S&P + 11 sectors, color clampat a ±2%."""
     from matplotlib.colors import TwoSlopeNorm
+    from matplotlib.patches import Rectangle
 
     norm = TwoSlopeNorm(vmin=-2.0, vcenter=0.0, vmax=2.0)
-    cmap = matplotlib.colormaps["RdYlGn"]  # API estable (matplotlib ≥3.6)
-
-    # Caselles: resum S&P primer (si hi és) + sectors, en graella de 4 columnes.
     cells: list[tuple[str, float, bool]] = []
     if spy_pct is not None:
         cells.append(("S&P 500", spy_pct, True))
@@ -183,30 +248,81 @@ def render_heatmap(session: date, rows: list[SectorRow],
 
     ncols = 4
     nrows = -(-len(cells) // ncols)  # ceil
-    fig, ax = plt.subplots(figsize=(ncols * 2.4, nrows * 1.5 + 0.6))
     ax.set_xlim(0, ncols)
     ax.set_ylim(0, nrows)
     ax.axis("off")
+    ax.set_title("Per sectors", fontsize=12, weight="bold", loc="left", pad=6)
 
     for i, (label, pct, is_index) in enumerate(cells):
-        col = i % ncols
-        row = i // ncols
-        y = nrows - 1 - row  # de dalt a baix
+        col, row = i % ncols, i // ncols
+        y = nrows - 1 - row
         color = cmap(norm(max(-2.0, min(2.0, pct))))
-        ax.add_patch(plt.Rectangle((col, y), 1, 1, facecolor=color,
-                                   edgecolor="white", linewidth=2))
-        # Color del text segons la lluminositat del fons (llegibilitat).
-        r_, g_, b_, _ = color
-        text_color = "white" if (0.299 * r_ + 0.587 * g_ + 0.114 * b_) < 0.55 else "black"
-        weight = "bold" if is_index else "normal"
+        ax.add_patch(Rectangle((col, y), 1, 1, facecolor=color,
+                               edgecolor="white", linewidth=2))
+        tc = _text_color(color)
         ax.text(col + 0.5, y + 0.60, label, ha="center", va="center",
-                fontsize=10, weight=weight, color=text_color)
-        ax.text(col + 0.5, y + 0.32, fmt_pct(pct), ha="center", va="center",
-                fontsize=13, weight="bold", color=text_color)
+                fontsize=9.5, weight="bold" if is_index else "normal", color=tc)
+        ax.text(col + 0.5, y + 0.30, fmt_pct(pct), ha="center", va="center",
+                fontsize=12, weight="bold", color=tc)
 
-    fig.suptitle(f"Tancament S&P 500 per sectors · {session.strftime('%d/%m/%Y')}",
-                 fontsize=14, weight="bold", y=0.99)
-    fig.tight_layout(rect=(0, 0, 1, 0.96))
+
+def _draw_treemap(ax, stocks: list[Stock], cmap) -> None:
+    """Treemap estil Finviz: mida per capitalització, color per % (clamp ±3%)."""
+    import squarify
+    from matplotlib.colors import TwoSlopeNorm
+    from matplotlib.patches import Rectangle
+
+    norm = TwoSlopeNorm(vmin=-3.0, vcenter=0.0, vmax=3.0)
+    W = H = 100.0
+    sizes = squarify.normalize_sizes([s.market_cap for s in stocks], W, H)
+    rects = squarify.squarify(sizes, 0, 0, W, H)
+
+    ax.set_xlim(0, W)
+    ax.set_ylim(0, H)
+    ax.invert_yaxis()  # de més gran (dalt-esq) cap avall, com Finviz
+    ax.axis("off")
+    ax.set_title("Principals valors", fontsize=12, weight="bold", loc="left", pad=6)
+
+    for st, rc in zip(stocks, rects):
+        x, y, dx, dy = rc["x"], rc["y"], rc["dx"], rc["dy"]
+        color = cmap(norm(max(-3.0, min(3.0, st.pct))))
+        ax.add_patch(Rectangle((x, y), dx, dy, facecolor=color,
+                               edgecolor="white", linewidth=1.5))
+        tc = _text_color(color)
+        # Mida de lletra proporcional a la caixa; etiqueta només si hi cap.
+        fs = max(5.0, min(dx, dy) * 0.34)
+        if min(dx, dy) < 5:
+            continue
+        ax.text(x + dx / 2, y + dy / 2 - fs * 0.05, st.ticker,
+                ha="center", va="center", fontsize=fs, weight="bold", color=tc)
+        if dy > 9:  # només si la caixa és prou alta per a una segona línia
+            ax.text(x + dx / 2, y + dy / 2 + fs * 0.85, fmt_pct(st.pct),
+                    ha="center", va="center", fontsize=fs * 0.8, color=tc)
+
+
+def render_image(session: date, rows: list[SectorRow], spy_pct: float | None,
+                 stocks: list[Stock] | None = None) -> bytes:
+    """Munta la imatge (sectors + treemap si hi ha valors) i retorna el PNG."""
+    import io
+
+    import matplotlib
+    matplotlib.use("Agg")  # backend headless (CI sense pantalla)
+    import matplotlib.pyplot as plt
+
+    cmap = matplotlib.colormaps["RdYlGn"]  # API estable (matplotlib ≥3.6)
+
+    if stocks:
+        # Sectors a dalt (més compacte) + treemap a sota (protagonista).
+        fig = plt.figure(figsize=(11, 12), layout="constrained")
+        gs = fig.add_gridspec(2, 1, height_ratios=[3, 5])
+        _draw_sector_grid(fig.add_subplot(gs[0]), rows, spy_pct, cmap)
+        _draw_treemap(fig.add_subplot(gs[1]), stocks, cmap)
+    else:
+        fig = plt.figure(figsize=(11, 5), layout="constrained")
+        _draw_sector_grid(fig.add_subplot(1, 1, 1), rows, spy_pct, cmap)
+
+    fig.suptitle(f"Tancament de l'S&P 500 · {session.strftime('%d/%m/%Y')}",
+                 fontsize=15, weight="bold")
 
     buf = io.BytesIO()
     fig.savefig(buf, format="png", dpi=130, bbox_inches="tight")
@@ -352,7 +468,13 @@ def main() -> int:
               "(cap de setmana / festiu / doble execució). No s'encua res.")
         return 0
 
-    png = render_heatmap(session, rows, spy_pct)
+    # Treemap de valors (fail-soft: si no hi ha capitalitzacions, només sectors).
+    caps = fetch_market_caps(_CONSTITUENT_TICKERS)
+    stocks = build_stock_rows(changes, caps)
+    if not stocks:
+        log.warning("Sense capitalitzacions: es publica només el heatmap de sectors.")
+
+    png = render_image(session, rows, spy_pct, stocks)
     comment = build_comment(rows, spy_pct, use_llm=use_llm)
     key = f"borsa/{session.isoformat()}.png"
 

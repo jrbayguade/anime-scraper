@@ -29,8 +29,9 @@ Té **cinc sortides independents**, cadascuna amb el seu cron de GitHub Actions:
    DeepSeek no respon, el procés acaba amb error (workflow vermell).
 
 5. **Heatmap de la borsa** (dies de mercat) — `borsa.py`. Cada matí (dt–ds) agafa
-   amb yfinance el tancament de l'S&P 500 pels 11 sectors GICS, en pinta un
-   **heatmap** (matplotlib), el puja a **Cloudflare R2** (`r2_upload.py`) per
+   amb yfinance el tancament de l'S&P 500, en pinta una imatge amb un **heatmap
+   de sectors + un treemap estil Finviz** dels valors principals (matplotlib +
+   squarify), el puja a **Cloudflare R2** (`r2_upload.py`) per
    tenir-ne URL, i publica un **post d'imatge a r/lapelaeslapela** amb un comentari
    en català generat per DeepSeek (fallback determinista si DeepSeek cau). No
    publica en festius de borsa (idempotència per data de sessió).
@@ -169,8 +170,12 @@ els 11 ETFs SPDR de sector GICS (`XLK`, `XLC`, `XLY`, `XLP`, `XLE`, `XLF`, `XLV`
   (i la que mockegen els tests); `compute_changes()` i `build_rows()` són pures.
 - **Idempotència/festius:** `output/borsa_history.json` (`{"last_session"}`) evita
   duplicar; si la data de l'última sessió no és nova, `--push` no encua res.
-- **Heatmap:** matplotlib (backend `Agg`), paleta `RdYlGn` centrada a 0% i
-  clampada a ±2%. El PNG es puja a R2 (`r2_upload.upload_bytes`) per tenir-ne URL.
+- **Imatge (2 parts):** un sol PNG amb el heatmap dels 11 sectors a dalt (clamp
+  ±2%) i, a sota, un **treemap estil Finviz** dels ≈40 valors principals
+  (`CONSTITUENTS`): mida per capitalització (`fetch_market_caps`, yfinance
+  `fast_info`, en viu) i color pel % del dia (clamp ±3%, via `squarify`).
+  `render_image()` és fail-soft: sense capitalitzacions dibuixa només els sectors.
+  matplotlib (backend `Agg`). El PNG es puja a R2 (`r2_upload.upload_bytes`).
 - **Comentari:** DeepSeek rep els números i els relata (mai inventa dades); si
   falla, comentari determinista. Va al `comment_markdown` (primer comentari).
 - yfinance pot petar/limitar a CI: s'aplica la convenció de robustesa (fail-soft).
