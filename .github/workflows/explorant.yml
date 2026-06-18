@@ -6,7 +6,12 @@ on:
     # explorant.py decideix quines fonts toquen avui (dia de setmana / setmana del
     # mes); la majoria de dies publica 0-1 posts. El cron de GitHub sempre és UTC.
     - cron: "0 6 * * *"
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      all:
+        description: "Publica TOTES les fonts (ignora el calendari) — per provar"
+        type: boolean
+        default: false
 
 # Permís per desar l'històric (output/explorant_history.json) de tornada al repo.
 permissions:
@@ -43,7 +48,13 @@ jobs:
           R2_BUCKET: ${{ secrets.R2_BUCKET }}
           R2_PUBLIC_BASE: ${{ secrets.R2_PUBLIC_BASE }}
           EXPLORANT_SUBREDDIT: ${{ secrets.EXPLORANT_SUBREDDIT }}
-        run: python explorant.py --push --quiet
+          ALL: ${{ github.event.inputs.all }}
+        run: |
+          if [ "$ALL" = "true" ]; then
+            python explorant.py --push --quiet --all
+          else
+            python explorant.py --push --quiet
+          fi
 
       - name: Desa l'històric (resistent a curses)
         if: always()

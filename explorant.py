@@ -622,6 +622,8 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--post", action="store_true", help="Preview (no encua res).")
     p.add_argument("--push", action="store_true", help="Publica (re-allotja imatge + encua).")
     p.add_argument("--source", help="Força una font concreta (clau de SOURCES).")
+    p.add_argument("--all", action="store_true",
+                   help="Totes les fonts, ignorant el calendari (per provar).")
     p.add_argument("--no-llm", action="store_true", help="Sense DeepSeek (resum cru).")
     p.add_argument("--quiet", action="store_true", help="Menys missatges.")
     return p.parse_args()
@@ -634,7 +636,12 @@ def main() -> int:
     use_llm = config.USE_LLM and not args.no_llm
     today = date.today()
 
-    keys = [args.source] if args.source else sources_due(today)
+    if args.all:
+        keys = list(SOURCES)
+    elif args.source:
+        keys = [args.source]
+    else:
+        keys = sources_due(today)
     if not keys:
         print("Avui no toca cap font. (Calendari a sources_due.)")
         return 0
