@@ -247,11 +247,15 @@ def _parse_wpjson(base: str, key: str, name: str, web: str, limit: int = 6) -> l
         return []
     out: list[Fitxa] = []
     for p in posts:
+        if not isinstance(p, dict):
+            continue
         title = BeautifulSoup(p.get("title", {}).get("rendered", ""), "lxml").get_text(strip=True)
         excerpt = _clean_summary(
             BeautifulSoup(p.get("excerpt", {}).get("rendered", ""), "lxml").get_text(" ", strip=True))
         media = (p.get("_embedded", {}) or {}).get("wp:featuredmedia", [])
-        img = media[0].get("source_url", "") if media and isinstance(media, list) else ""
+        img = ""
+        if isinstance(media, list) and media and isinstance(media[0], dict):
+            img = media[0].get("source_url", "")
         if title and img:
             out.append(Fitxa(key, name, web, title, p.get("link", ""), excerpt, img))
     log.info("%s: %d posts (wp-json).", key, len(out))
