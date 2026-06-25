@@ -327,14 +327,12 @@ def main() -> None:
         "url": image_url_r2,
         "comment_markdown": comment,
         "subreddit": _SUBREDDIT,
+        "source": _QUEUE_SOURCE,
+        "source_label": _QUEUE_SOURCE_LABEL,
     }
 
     # Encua
-    queue_store.enqueue(
-        payload,
-        source=_QUEUE_SOURCE,
-        source_label=_QUEUE_SOURCE_LABEL,
-    )
+    queue_store.enqueue(payload)
     print(f"✅ Encuat [{_QUEUE_SOURCE_LABEL}]: {new_title[:60]} → imatge-{payload['generated_at'][:10]}")
 
     # Desa historial
