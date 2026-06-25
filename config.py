@@ -224,6 +224,13 @@ JOCS_SUBREDDIT = os.getenv("JOCS_SUBREDDIT", "").strip() or "jocs"
 JOCS_HISTORY_FILE = OUTPUT_DIR / "jocs_history.json"
 
 # --------------------------------------------------------------------------- #
+# Culers — notícies del FC Barcelona per a r/Culers                           #
+# --------------------------------------------------------------------------- #
+# Font: feed RSS del Barça de Mundo Deportivo. Reescriptura amb DeepSeek al
+# català com si fos un post d'un culé. Post d'imatge + comentari amb el text.
+CULERS_SUBREDDIT = os.getenv("CULERS_SUBREDDIT", "").strip() or "Culers"
+
+# --------------------------------------------------------------------------- #
 # Cloudflare R2 (hostatge d'imatges generades)                                 #
 # --------------------------------------------------------------------------- #
 # Per publicar un post d'IMATGE amb una imatge generada localment (p.ex. el
