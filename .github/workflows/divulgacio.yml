@@ -1,13 +1,19 @@
-name: Ciència Oberta · r/divulgacio (dijous)
+name: Divulgació · r/divulgacio (dl i dj)
 
 on:
   schedule:
-    # Dijous a les 18:00 UTC (20:00 hora catalana a l'estiu).
+    # Dilluns 15:30 UTC (17:30 hora catalana a l'estiu) → 7ciències.cat
+    - cron: "30 15 * * 1"
+    # Dijous 18:00 UTC (20:00 hora catalana a l'estiu) → cienciaoberta.cat
     - cron: "0 18 * * 4"
   workflow_dispatch:
     inputs:
+      source:
+        description: "Font concreta (cienciaoberta | set7ciencies; buit = calendari)"
+        type: string
+        default: ""
       diagnose:
-        description: "Diagnòstic: comprova API i article (no encua res)"
+        description: "Diagnòstic: comprova API i articles (no encua res)"
         type: boolean
         default: false
 
@@ -47,9 +53,12 @@ jobs:
           R2_PUBLIC_BASE: ${{ secrets.R2_PUBLIC_BASE }}
           DIVULGACIO_SUBREDDIT: ${{ secrets.DIVULGACIO_SUBREDDIT }}
           DIAGNOSE: ${{ github.event.inputs.diagnose }}
+          SOURCE: ${{ github.event.inputs.source }}
         run: |
           if [ "$DIAGNOSE" = "true" ]; then
             python divulgacio.py --diagnose
+          elif [ -n "$SOURCE" ]; then
+            python divulgacio.py --source "$SOURCE" --push
           else
             python divulgacio.py --push
           fi

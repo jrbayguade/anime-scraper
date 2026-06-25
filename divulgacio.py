@@ -1,20 +1,21 @@
 """
-divulgacio.py — Pack «Ciència Oberta» per a r/divulgacio.
+divulgacio.py — Pack «Divulgació» per a r/divulgacio. Dues fonts:
 
-Cada dijous: agafa el darrer article de cienciaoberta.cat (via wp-json),
-el transforma amb DeepSeek en un post engaging en català i l'encua al
-Worker com a post d'imatge + comentari.
+  DIJOUS 18:00 UTC → cienciaoberta.cat
+    wp-json → darrer article → DeepSeek (títol enginyós + post engaging en català)
+    → post d'imatge + comentari
 
-Flux:
-  wp-json cienciaoberta.cat → darrer article no publicat
-  → text complet (HTML scraping) → DeepSeek (títol + post engaging en català)
-  → imatge destacada a R2 → queue_store.enqueue (r/divulgacio)
+  DILLUNS 15:30 UTC → 7ciencies.cat
+    wp-json → darrer article → títol original + DeepSeek (resum breu)
+    → post d'imatge + comentari amb resum i enllaç original
 
 Ús:
-  python divulgacio.py --post       # preview (no encua res)
-  python divulgacio.py --push       # encua al Worker
-  python divulgacio.py --no-llm     # sense DeepSeek (excerpt original)
-  python divulgacio.py --diagnose   # diagnòstic: comprova API i article
+  python divulgacio.py --post                        # preview del que toca avui
+  python divulgacio.py --push                        # encua al Worker
+  python divulgacio.py --source cienciaoberta --post # força una font concreta
+  python divulgacio.py --source set7ciencies --post
+  python divulgacio.py --no-llm --post               # sense DeepSeek
+  python divulgacio.py --diagnose                    # diagnòstic fonts
 """
 
 from __future__ import annotations
@@ -24,7 +25,7 @@ import json
 import logging
 import re
 import sys
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 
 import requests
@@ -41,17 +42,27 @@ log = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
-_API_URL = (
-    "https://www.cienciaoberta.cat/wp-json/wp/v2/posts"
-    "?per_page=10&_embed=1&orderby=date&order=desc"
-)
-_SITE_BASE = "https://www.cienciaoberta.cat"
 _HISTORY_FILE: Path = config.OUTPUT_DIR / "divulgacio_history.json"
 _QUEUE_SOURCE = "divulgacio"
-_QUEUE_SOURCE_LABEL = "Ciència Oberta"
+_QUEUE_SOURCE_LABEL = "Divulgació"
 _SUBREDDIT = config.DIVULGACIO_SUBREDDIT
 
 _HEADERS = {"User-Agent": "Mozilla/5.0"}
+
+# ---------------------------------------------------------------------------
+# Calendari de fonts
+# ---------------------------------------------------------------------------
+
+def sources_due(d: date) -> list[str]:
+    """Retorna les fonts que toquen avui."""
+    dow = d.weekday()   # 0=dl, 3=dj, 4=dv
+    due = []
+    if dow == 0:
+        due.append("set7ciencies")    # dilluns
+    if dow == 3:
+        due.append("cienciaoberta")   # dijous
+    return due
+
 
 # ---------------------------------------------------------------------------
 # Historial
@@ -73,46 +84,39 @@ def _save_history(urls: set[str]) -> None:
 
 
 # ---------------------------------------------------------------------------
-# API: articles
+# Parsers de les fonts
 # ---------------------------------------------------------------------------
 
-def _fetch_posts() -> list[dict]:
-    """Retorna articles recents de cienciaoberta.cat via wp-json."""
-    r = requests.get(_API_URL, headers=_HEADERS, timeout=15)
+def _parse_wp_posts(base_url: str) -> list[dict]:
+    """Agafa els darrers posts via wp-json (genèric per als dos llocs)."""
+    api = (
+        f"{base_url.rstrip('/')}/wp-json/wp/v2/posts"
+        "?per_page=10&_embed=1&orderby=date&order=desc"
+    )
+    r = requests.get(api, headers=_HEADERS, timeout=15)
     r.raise_for_status()
-    posts = r.json()
     result = []
-    for p in posts:
-        title = BeautifulSoup(p["title"]["rendered"], "html.parser").get_text()
+    for p in r.json():
+        title = BeautifulSoup(p["title"]["rendered"], "html.parser").get_text().strip()
         excerpt = BeautifulSoup(
             p["excerpt"]["rendered"], "html.parser"
         ).get_text(" ", strip=True)
         link = p["link"]
         img = ""
-        embedded = p.get("_embedded", {})
-        media_list = embedded.get("wp:featuredmedia", [])
-        if media_list and isinstance(media_list, list):
+        media_list = p.get("_embedded", {}).get("wp:featuredmedia", [])
+        if media_list and isinstance(media_list, list) and media_list[0]:
             img = media_list[0].get("source_url", "")
-        result.append({
-            "title": title.strip(),
-            "url": link,
-            "excerpt": excerpt,
-            "image_url": img,
-        })
+        result.append({"title": title, "url": link, "excerpt": excerpt, "image_url": img})
     return result
 
 
-# ---------------------------------------------------------------------------
-# Article complet
-# ---------------------------------------------------------------------------
-
 def _fetch_article_text(url: str) -> str:
-    """Baixa el text principal d'un article de cienciaoberta.cat."""
+    """Baixa el text principal d'un article WordPress."""
     try:
         r = requests.get(url, headers=_HEADERS, timeout=20)
         r.raise_for_status()
     except Exception as e:
-        log.warning("No s'ha pogut baixar l'article: %s", e)
+        log.warning("No s'ha pogut baixar l'article (%s): %s", url, e)
         return ""
     soup = BeautifulSoup(r.text, "html.parser")
     container = (
@@ -126,17 +130,17 @@ def _fetch_article_text(url: str) -> str:
         for p in container.find_all("p")
         if len(p.get_text(strip=True)) > 60
     ]
-    # Descarta el primer paràgraf si és metadata (autor/data/categoria)
-    if paragraphs and re.match(r"^Publicat per", paragraphs[0]):
+    # Descarta primer paràgraf si és metadata (autor/data)
+    if paragraphs and re.match(r"^Publicat per|^Per ", paragraphs[0]):
         paragraphs = paragraphs[1:]
     return " ".join(paragraphs[:10])
 
 
 # ---------------------------------------------------------------------------
-# DeepSeek: reescriptura engaging
+# DeepSeek: dos modes
 # ---------------------------------------------------------------------------
 
-_PROMPT = """Tens un article de ciència en català de Ciència Oberta (web de divulgació científica).
+_PROMPT_ENGAGING = """Tens un article de ciència en català de Ciència Oberta (web de divulgació científica).
 Converteix-lo en un post engaging per a Reddit r/divulgacio: ha de despertar curiositat,
 fer que la gent vulgui llegir més — comença amb una pregunta retòrica o una dada sorprenent.
 Estil: directe, apassionat per la ciència, accessible però rigorós. Català de Catalunya.
@@ -150,37 +154,62 @@ Article original:
 Títol: {title}
 Text: {body}"""
 
+_PROMPT_RESUM = """Tens un article de divulgació científica en català de 7ciències.
+Escriu un resum breu (2-3 frases) per a Reddit r/divulgacio en català de Catalunya.
+Ha de ser informatiu i precís; acaba indicant que hi ha més informació a l'article original.
+Res de clickbait. L'estil ha de ser directe i clar.
 
-def _rewrite_with_deepseek(title: str, body: str) -> tuple[str, str]:
-    """Retorna (nou_titol, nou_text) en català per DeepSeek."""
-    prompt = _PROMPT.format(title=title, body=body[:2000])
+Retorna EXACTAMENT en aquest format (sense cap altre text):
+TEXT: <resum en 2-3 frases + "Més informació a l'article original.">
+
+Article original:
+Títol: {title}
+Text: {body}"""
+
+
+def _rewrite_engaging(title: str, body: str) -> tuple[str, str]:
+    """cienciaoberta: retorna (nou_titol, nou_text)."""
     try:
         resposta = _deepseek_chat(
-            [{"role": "user", "content": prompt}],
+            [{"role": "user", "content": _PROMPT_ENGAGING.format(title=title, body=body[:2000])}],
             max_tokens=700,
         )
     except Exception as e:
         log.warning("DeepSeek ha fallat: %s", e)
         return title, body[:600]
-
     titol_m = re.search(r"TITOL:\s*(.+)", resposta)
     text_m = re.search(r"TEXT:\s*([\s\S]+)", resposta)
-    nou_titol = titol_m.group(1).strip() if titol_m else title
-    nou_text = text_m.group(1).strip() if text_m else body[:600]
-    return nou_titol, nou_text
+    return (
+        titol_m.group(1).strip() if titol_m else title,
+        text_m.group(1).strip() if text_m else body[:600],
+    )
+
+
+def _resum_simple(title: str, body: str, url: str) -> tuple[str, str]:
+    """7ciencies: retorna (titol_original, resum_breu)."""
+    try:
+        resposta = _deepseek_chat(
+            [{"role": "user", "content": _PROMPT_RESUM.format(title=title, body=body[:1500])}],
+            max_tokens=300,
+        )
+    except Exception as e:
+        log.warning("DeepSeek ha fallat: %s", e)
+        excerpt_fallback = body[:300] + f"\n\nMés informació a l'[article original]({url})."
+        return title, excerpt_fallback
+    text_m = re.search(r"TEXT:\s*([\s\S]+)", resposta)
+    return title, text_m.group(1).strip() if text_m else body[:300]
 
 
 # ---------------------------------------------------------------------------
 # Imatge: re-allotja a R2
 # ---------------------------------------------------------------------------
 
-def _rehost_image(image_url: str, slug: str) -> str:
+def _rehost_image(image_url: str, source_key: str, slug: str) -> str:
     if not image_url:
         return ""
     if not all([config.R2_ACCOUNT_ID, config.R2_BUCKET, config.R2_PUBLIC_BASE]):
         log.warning("R2 no configurat; s'usa la URL original.")
         return image_url
-
     try:
         r = requests.get(image_url, headers=_HEADERS, timeout=20)
         r.raise_for_status()
@@ -198,16 +227,80 @@ def _rehost_image(image_url: str, slug: str) -> str:
             img = Image.open(io.BytesIO(data)).convert("RGB")
             buf = io.BytesIO()
             img.save(buf, "JPEG", quality=92)
-            data = buf.getvalue()
-            ext = "jpg"
-            content_type = "image/jpeg"
-
+            data, ext, content_type = buf.getvalue(), "jpg", "image/jpeg"
         stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
-        key = f"divulgacio/{slug}/{stamp}.{ext}"
+        key = f"divulgacio/{source_key}/{slug}/{stamp}.{ext}"
         return r2_upload.upload_bytes(data, key, content_type)
     except Exception as e:
         log.warning("Error re-allotjant imatge: %s", e)
         return image_url
+
+
+# ---------------------------------------------------------------------------
+# Processa una font concreta
+# ---------------------------------------------------------------------------
+
+def _process_source(source_key: str, history: set[str], use_llm: bool) -> dict | None:
+    """Retorna el payload llest per encuar, o None si no hi ha res nou."""
+    if source_key == "cienciaoberta":
+        posts = _parse_wp_posts("https://www.cienciaoberta.cat")
+        source_label = "Ciència Oberta"
+    elif source_key == "set7ciencies":
+        posts = _parse_wp_posts("https://7ciencies.cat")
+        source_label = "7Ciències"
+    else:
+        raise ValueError(f"Font desconeguda: {source_key}")
+
+    log.info("%s: %d articles disponibles.", source_label, len(posts))
+
+    article = next((p for p in posts if p["url"] not in history), None)
+    if article is None:
+        log.info("%s: cap article nou.", source_label)
+        return None
+
+    title = article["title"]
+    url = article["url"]
+    body = _fetch_article_text(url) or article["excerpt"]
+
+    if source_key == "cienciaoberta":
+        if use_llm:
+            new_title, new_text = _rewrite_engaging(title, body)
+        else:
+            new_title, new_text = title, article["excerpt"]
+        footer = f"\n\n*(via [Ciència Oberta]({url}))*"
+    else:  # set7ciencies
+        if use_llm:
+            new_title, new_text = _resum_simple(title, body, url)
+        else:
+            new_title = title
+            new_text = article["excerpt"][:400]
+        footer = f"\n\n*(via [7Ciències]({url}))*"
+
+    slug = re.sub(r"[^a-z0-9]+", "-", new_title.lower())[:40]
+    image_url_r2 = _rehost_image(article["image_url"], source_key, slug)
+
+    print(f"\n--- ORIGINAL ({source_label}) ---")
+    print(f"Títol: {title}")
+    print(f"Text:  {body[:350]}...")
+    print(f"\n--- RESULTAT ({'' if use_llm else 'NO '}LLM) ---")
+    print(f"Títol: {new_title}")
+    print(f"Text:\n{new_text[:500]}")
+    print(f"\nImatge: {article['image_url']}")
+
+    return {
+        "article_url": url,
+        "payload": {
+            "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S"),
+            "tipus": "imatge" if image_url_r2 else "text",
+            "title": new_title,
+            "url": image_url_r2 if image_url_r2 else None,
+            "markdown": (new_text + footer) if not image_url_r2 else None,
+            "comment_markdown": (new_text + footer) if image_url_r2 else None,
+            "subreddit": _SUBREDDIT,
+            "source": _QUEUE_SOURCE,
+            "source_label": source_label,
+        },
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -216,12 +309,13 @@ def _rehost_image(image_url: str, slug: str) -> str:
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Ciència Oberta — divulgació científica per a r/divulgacio"
+        description="Divulgació — ciència en català per a r/divulgacio"
     )
     parser.add_argument("--post", action="store_true", help="Preview (no encua res)")
     parser.add_argument("--push", action="store_true", help="Encua al Worker")
+    parser.add_argument("--source", default="", help="Força font: cienciaoberta | set7ciencies")
     parser.add_argument("--no-llm", action="store_true", help="Sense DeepSeek")
-    parser.add_argument("--diagnose", action="store_true", help="Diagnòstic API/article")
+    parser.add_argument("--diagnose", action="store_true", help="Diagnòstic fonts")
     args = parser.parse_args()
 
     if not args.post and not args.push and not args.diagnose:
@@ -230,100 +324,51 @@ def main() -> None:
 
     if args.diagnose:
         print("=== Diagnòstic divulgacio.py ===")
-        try:
-            posts = _fetch_posts()
-            print(f"wp-json OK: {len(posts)} articles")
-            if posts:
-                first = posts[0]
-                print(f"  Darrer: {first['title']}")
-                print(f"  URL: {first['url']}")
-                print(f"  Imatge: {first['image_url']}")
-                body = _fetch_article_text(first["url"])
-                print(f"  Text article ({len(body)} chars): {body[:200]}...")
-        except Exception as e:
-            print(f"ERROR: {e}")
+        for key, base in [("cienciaoberta", "https://www.cienciaoberta.cat"),
+                          ("set7ciencies", "https://7ciencies.cat")]:
+            try:
+                posts = _parse_wp_posts(base)
+                p = posts[0] if posts else None
+                print(f"{key}: {len(posts)} articles{'  | darrer: ' + p['title'][:60] if p else ''}")
+                if p:
+                    print(f"  Imatge: {p['image_url'] or 'cap'}")
+            except Exception as e:
+                print(f"{key}: ERROR — {e}")
         return
 
     history = _load_history()
-
-    try:
-        posts = _fetch_posts()
-    except Exception as e:
-        log.error("Error llegint l'API de cienciaoberta.cat: %s", e)
-        sys.exit(1)
-
-    if not posts:
-        log.error("L'API no ha retornat cap article.")
-        sys.exit(1)
-
-    log.info("cienciaoberta.cat: %d articles disponibles.", len(posts))
-
-    article = None
-    for post in posts:
-        if post["url"] not in history:
-            article = post
-            break
-
-    if article is None:
-        log.info("Cap article nou (tots ja publicats). Res a encuar.")
-        return
-
-    title_orig = article["title"]
-    url_orig = article["url"]
-    image_url_orig = article["image_url"]
-
-    body = _fetch_article_text(url_orig)
-    if not body:
-        body = article["excerpt"]
-
     use_llm = config.USE_LLM and not args.no_llm
-    if use_llm:
-        new_title, new_text = _rewrite_with_deepseek(title_orig, body)
+
+    # Determina quines fonts toquen avui (o la forçada per --source)
+    if args.source:
+        due = [args.source]
     else:
-        new_title = title_orig
-        new_text = article["excerpt"]
+        due = sources_due(date.today())
 
-    footer = f"\n\n*(via [Ciència Oberta]({url_orig}))*"
-
-    print(f"\n--- ORIGINAL ---")
-    print(f"Títol: {title_orig}")
-    print(f"Text:  {body[:350]}...")
-    print(f"\n--- DEEPSEEK ({'' if use_llm else 'NO '}LLM) ---")
-    print(f"Títol: {new_title}")
-    print(f"Text:\n{new_text}")
-    print(f"\nImatge: {image_url_orig}")
-
-    if not args.push:
-        print("\n[--post: no s'encua res]")
+    if not due:
+        log.info("Avui no toca cap font de divulgacio. Res a encuar.")
         return
 
-    slug = re.sub(r"[^a-z0-9]+", "-", new_title.lower())[:40]
-    image_url_r2 = _rehost_image(image_url_orig, slug)
+    for source_key in due:
+        result = _process_source(source_key, history, use_llm)
+        if result is None:
+            continue
 
-    if not image_url_r2:
-        log.error("No hi ha imatge disponible per al post d'imatge.")
-        sys.exit(1)
+        if not args.push:
+            print("\n[--post: no s'encua res]")
+            continue
 
-    comment = f"{new_text}{footer}"
-    payload = {
-        "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S"),
-        "tipus": "imatge",
-        "title": new_title,
-        "url": image_url_r2,
-        "comment_markdown": comment,
-        "subreddit": _SUBREDDIT,
-        "source": _QUEUE_SOURCE,
-        "source_label": _QUEUE_SOURCE_LABEL,
-    }
+        # Neteja camps buits del payload (None)
+        payload = {k: v for k, v in result["payload"].items() if v is not None}
+        queue_store.enqueue(payload)
+        print(
+            f"✅ Encuat [{payload['source_label']}]: {payload['title'][:60]}"
+            f" → {payload['tipus']}-{payload['generated_at'][:10]}"
+        )
+        history.add(result["article_url"])
 
-    queue_store.enqueue(payload)
-    print(
-        f"✅ Encuat [{_QUEUE_SOURCE_LABEL}]: {new_title[:60]}"
-        f" → imatge-{payload['generated_at'][:10]}"
-    )
-
-    history.add(url_orig)
-    _save_history(history)
+    if args.push:
+        _save_history(history)
 
 
 if __name__ == "__main__":
