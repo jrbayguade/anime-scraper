@@ -1,0 +1,60 @@
+name: Ciència Oberta · r/divulgacio (dijous)
+
+on:
+  schedule:
+    # Dijous a les 18:00 UTC (20:00 hora catalana a l'estiu).
+    - cron: "0 18 * * 4"
+  workflow_dispatch:
+    inputs:
+      diagnose:
+        description: "Diagnòstic: comprova API i article (no encua res)"
+        type: boolean
+        default: false
+
+# Permís per desar l'històric (output/divulgacio_history.json) de tornada al repo.
+permissions:
+  contents: write
+
+concurrency:
+  group: divulgacio
+  cancel-in-progress: false
+
+jobs:
+  divulgacio:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Descarrega el codi
+        uses: actions/checkout@v4
+
+      - name: Prepara Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Instal·la dependències
+        run: pip install -r requirements.txt
+
+      - name: Publica article de ciència
+        env:
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          WORKER_URL: ${{ secrets.WORKER_URL }}
+          WORKER_WRITE_TOKEN: ${{ secrets.WORKER_WRITE_TOKEN }}
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_PUBLIC_BASE: ${{ secrets.R2_PUBLIC_BASE }}
+          DIVULGACIO_SUBREDDIT: ${{ secrets.DIVULGACIO_SUBREDDIT }}
+          DIAGNOSE: ${{ github.event.inputs.diagnose }}
+        run: |
+          if [ "$DIAGNOSE" = "true" ]; then
+            python divulgacio.py --diagnose
+          else
+            python divulgacio.py --push
+          fi
+
+      - name: Desa l'històric (resistent a curses)
+        if: always()
+        run: |
+          bash scripts/sync_queue.sh "chore: històric de divulgacio [skip ci]" output/divulgacio_history.json

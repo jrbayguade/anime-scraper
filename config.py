@@ -231,6 +231,13 @@ JOCS_HISTORY_FILE = OUTPUT_DIR / "jocs_history.json"
 CULERS_SUBREDDIT = os.getenv("CULERS_SUBREDDIT", "").strip() or "Culers"
 
 # --------------------------------------------------------------------------- #
+# Divulgació — ciència en català per a r/divulgacio                            #
+# --------------------------------------------------------------------------- #
+# Font: cienciaoberta.cat (wp-json). DeepSeek converteix l'article en un post
+# engaging. Post d'imatge (imatge destacada a R2) + comentari amb el text.
+DIVULGACIO_SUBREDDIT = os.getenv("DIVULGACIO_SUBREDDIT", "").strip() or "divulgacio"
+
+# --------------------------------------------------------------------------- #
 # Cloudflare R2 (hostatge d'imatges generades)                                 #
 # --------------------------------------------------------------------------- #
 # Per publicar un post d'IMATGE amb una imatge generada localment (p.ex. el
