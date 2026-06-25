@@ -7,8 +7,8 @@ tocar res relacionat amb la publicació.
 ## Què és
 
 Bot que prepara contingut en català i el publica a Reddit (sobretot
-**r/AnimeCatala**; vegeu la 5a sortida, que va a un altre subreddit).
-Té **sis sortides independents**, cadascuna amb el seu cron de GitHub Actions:
+**r/AnimeCatala**; vegeu les sortides 5-7, que van a altres subreddits).
+Té **set sortides independents**, cadascuna amb el seu cron de GitHub Actions:
 
 1. **Recull setmanal** (dilluns) — `main.py`. Fa webscraping de notícies d'anime
    (El Racó del Manga, Fansubs.cat, Anime Corner), les resumeix/tradueix amb
@@ -44,6 +44,18 @@ Té **sis sortides independents**, cadascuna amb el seu cron de GitHub Actions:
    d'imatge + primer comentari (resum + enllaç a la font en cursiva). Dedup amb
    `output/explorant_history.json`. Les 9 fonts estan implementades (festes i
    activitats d'escapadaambnens compten com a dues).
+
+7. **Jocs en català** (dilluns + dimarts) — `jocs.py`. Pack multi-font per a
+   **r/jocs**: 4 fonts amb calendari independent. **1r dilluns** → darrer article
+   de noujoc.com (RSS, post de text + «via noujoc.com»). **2n dilluns** → darrera
+   notícia de 3dnassos.cat (wp-json, post de text). **3r dilluns** → darrer episodi
+   del podcast Generació Digital de 3cat (post d'imatge + comentari + links a 3Cat
+   i Spotify). **Dimarts** → videojoc aleatori no repetit de la llista VDJOC de
+   Llengua Catalana (post d'imatge + comentari amb plataformes i links de botiga).
+   La imatge es re-allotja a R2. Dedup amb `output/jocs_history.json`.
+   > **Nota tècnica:** 3dnassos.cat bloqueja el UA de Chrome; es fa servir
+   > `User-Agent: Mozilla/5.0` per al wp-json. noujoc.com pot donar 503 des de
+   > IPs de datacenter locals (però funciona bé des de GitHub Actions).
 
 Totes les sortides acaben **encuant un JSON a la cua del Cloudflare Worker**
 (`queue_store.enqueue`), i una **extensió de Chrome** llegeix la cua i publica a
@@ -126,6 +138,7 @@ El `payload` mínim que rep `enqueue()`:
 | `endevina_anime.py` | Joc «Endevina-ho, otaku!» (autònom): categoria rotativa + DeepSeek → post de text amb solució amb spoiler → cua del Worker. |
 | `explorant.py` | Pack «Explorant Catalunya» (autònom): 9 fonts d'activitats en família amb calendaris diferents → DeepSeek + foto a R2 → r/ExplorantCatalunya. |
 | `borsa.py` | Heatmap diari de la borsa (autònom): yfinance (11 sectors S&P) → matplotlib → R2 → DeepSeek → post d'imatge a r/lapelaeslapela. |
+| `jocs.py` | Pack «Jocs en català» (autònom): 4 fonts (noujoc RSS, 3dnassos wp-json, Generació Digital 3cat, VDJOC gencat) → DeepSeek + foto a R2 → r/jocs. |
 | `r2_upload.py` | **Pujada d'imatges a R2 (genèric).** Per a posts d'imatge amb una imatge GENERADA (no una URL externa). Reutilitzable. |
 
 ## Font de dades de SX3
@@ -243,13 +256,14 @@ Si no hi ha `DEEPSEEK_API_KEY`, tot funciona igual amb un fallback estàtic.
 | `.github/workflows/endevina-anime.yml` | dimecres i dissabte 18:00 UTC | `python endevina_anime.py --push --quiet` (joc otaku) |
 | `.github/workflows/borsa.yml` | dt–ds 04:00 UTC (05:00/06:00 CAT) | `python borsa.py --push --quiet` (heatmap de la borsa) |
 | `.github/workflows/explorant.yml` | diari 06:00 UTC | `python explorant.py --push --quiet` (el script tria què toca avui) |
+| `.github/workflows/jocs.yml` | dilluns i dimarts 07:00 UTC | `python jocs.py --push --quiet` (el script tria la font: noujoc/3dnassos/genDigital/videojoc) |
 
 Tots tenen `workflow_dispatch` (botó **Run workflow** per provar-los a mà).
 **Secrets necessaris** (Settings ▸ Secrets ▸ Actions): `DEEPSEEK_API_KEY`,
-`WORKER_URL` i `WORKER_WRITE_TOKEN` (compartits per les cinc sortides). La borsa
-necessita, a més, els secrets de R2 (`R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`,
+`WORKER_URL` i `WORKER_WRITE_TOKEN` (compartits per totes les sortides). La borsa
+i els jocs necessiten, a més, els secrets de R2 (`R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`,
 `R2_SECRET_ACCESS_KEY`, `R2_BUCKET`, `R2_PUBLIC_BASE`) i opcionalment
-`BORSA_SUBREDDIT`.
+`BORSA_SUBREDDIT` / `JOCS_SUBREDDIT`.
 
 > Nota DST: el cron de GitHub és sempre UTC. 08:50 UTC = 09:50 a l'hivern /
 > 10:50 a l'estiu a Catalunya. No es pot fixar l'hora local tot l'any amb un sol cron.
@@ -284,6 +298,13 @@ python borsa.py --debug                     # taula crua de % per sector
 python borsa.py --post                      # desa el PNG a output/ + comentari (no puja ni encua)
 python borsa.py --push                      # genera, puja a R2 i encua al Worker
 python borsa.py --no-llm --post             # comentari determinista (sense DeepSeek)
+
+# Pack «Jocs en català» (r/jocs)
+python jocs.py --post                          # preview del que toca avui
+python jocs.py --source videojoc_setmana --post  # prova una font concreta
+python jocs.py --push                          # publica (re-allotja imatge + encua)
+python jocs.py --all --post                    # totes les fonts (ignora el calendari)
+python jocs.py --diagnose                      # diagnòstic: resposta HTTP de cada font
 ```
 
 > **Publicació manual (`--manual`):** alternativa a l'extensió (publicar del tot

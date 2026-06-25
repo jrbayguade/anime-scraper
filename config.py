@@ -215,6 +215,15 @@ EXPLORANT_SUBREDDIT = os.getenv("EXPLORANT_SUBREDDIT", "").strip() or "Explorant
 EXPLORANT_HISTORY_FILE = OUTPUT_DIR / "explorant_history.json"
 
 # --------------------------------------------------------------------------- #
+# Jocs en català — notícies i videojocs per a r/jocs (multi-font)             #
+# --------------------------------------------------------------------------- #
+# Pack amb quatre fonts: noujoc.com (1r dl), 3dnassos.cat (2n dl), podcast
+# Generació Digital 3cat (3r dl) i videojoc aleatori de la llista VDJOC (dimarts).
+# Els posts d'imatge re-allotgen la foto a R2 (generacio_digital, videojoc_setmana).
+JOCS_SUBREDDIT = os.getenv("JOCS_SUBREDDIT", "").strip() or "jocs"
+JOCS_HISTORY_FILE = OUTPUT_DIR / "jocs_history.json"
+
+# --------------------------------------------------------------------------- #
 # Cloudflare R2 (hostatge d'imatges generades)                                 #
 # --------------------------------------------------------------------------- #
 # Per publicar un post d'IMATGE amb una imatge generada localment (p.ex. el

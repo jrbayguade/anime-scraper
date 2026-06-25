@@ -1,0 +1,77 @@
+name: Jocs en català · r/jocs (dl i dt)
+
+on:
+  schedule:
+    # Dilluns i dimarts a les 07:00 UTC (09:00 hora catalana a l'estiu).
+    # jocs.py decideix quina font toca avui:
+    #   1r dilluns → noujoc.com   |  2n dilluns → 3dnassos.cat
+    #   3r dilluns → Generació Digital (3cat)  |  dimarts → videojoc aleatori (VDJOC)
+    - cron: "0 7 * * 1,2"
+  workflow_dispatch:
+    inputs:
+      source:
+        description: "Font concreta (noujoc, 3dnassos, generacio_digital, videojoc_setmana; buit = calendari)"
+        type: string
+        default: ""
+      all:
+        description: "Publica TOTES les fonts (ignora el calendari) — per provar"
+        type: boolean
+        default: false
+      diagnose:
+        description: "Diagnòstic: mostra les respostes de les fonts (no encua res)"
+        type: boolean
+        default: false
+
+# Permís per desar l'històric (output/jocs_history.json) de tornada al repo.
+permissions:
+  contents: write
+
+concurrency:
+  group: jocs
+  cancel-in-progress: false
+
+jobs:
+  jocs:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Descarrega el codi
+        uses: actions/checkout@v4
+
+      - name: Prepara Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Instal·la dependències
+        run: pip install -r requirements.txt
+
+      - name: Publica el que toqui avui
+        env:
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          WORKER_URL: ${{ secrets.WORKER_URL }}
+          WORKER_WRITE_TOKEN: ${{ secrets.WORKER_WRITE_TOKEN }}
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_PUBLIC_BASE: ${{ secrets.R2_PUBLIC_BASE }}
+          JOCS_SUBREDDIT: ${{ secrets.JOCS_SUBREDDIT }}
+          SOURCE: ${{ github.event.inputs.source }}
+          ALL: ${{ github.event.inputs.all }}
+          DIAGNOSE: ${{ github.event.inputs.diagnose }}
+        run: |
+          if [ "$DIAGNOSE" = "true" ]; then
+            python jocs.py --diagnose
+          elif [ "$ALL" = "true" ]; then
+            python jocs.py --push --quiet --all
+          elif [ -n "$SOURCE" ]; then
+            python jocs.py --source "$SOURCE" --push --quiet
+          else
+            python jocs.py --push --quiet
+          fi
+
+      - name: Desa l'històric (resistent a curses)
+        if: always()
+        run: |
+          bash scripts/sync_queue.sh "chore: històric de jocs [skip ci]" output/jocs_history.json
