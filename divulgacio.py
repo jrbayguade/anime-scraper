@@ -350,7 +350,13 @@ def main() -> None:
         return
 
     for source_key in due:
-        result = _process_source(source_key, history, use_llm)
+        try:
+            result = _process_source(source_key, history, use_llm)
+        except Exception as exc:  # noqa: BLE001
+            # Robustesa: una font que falla (p.ex. timeout de xarxa) no ha de
+            # tombar tot el procés; es registra i es continua amb la resta.
+            log.warning("Font «%s» ha fallat: %s", source_key, exc)
+            continue
         if result is None:
             continue
 
