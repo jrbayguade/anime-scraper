@@ -238,6 +238,16 @@ CULERS_SUBREDDIT = os.getenv("CULERS_SUBREDDIT", "").strip() or "Culers"
 DIVULGACIO_SUBREDDIT = os.getenv("DIVULGACIO_SUBREDDIT", "").strip() or "divulgacio"
 
 # --------------------------------------------------------------------------- #
+# Mainada — activitats en família per a r/mainada                              #
+# --------------------------------------------------------------------------- #
+# Pack multi-font (dt–dv) amb fonts DIFERENTS de les d'Explorant: criar.cat
+# (RSS de criança), surtdecasa (agenda família) i festacatalunya (activitats
+# amb nens). Post d'imatge (foto re-allotjada a R2) + primer comentari amb un
+# resum curt en català i l'enllaç a la font original.
+MAINADA_SUBREDDIT = os.getenv("MAINADA_SUBREDDIT", "").strip() or "mainada"
+MAINADA_HISTORY_FILE = OUTPUT_DIR / "mainada_history.json"
+
+# --------------------------------------------------------------------------- #
 # Cloudflare R2 (hostatge d'imatges generades)                                 #
 # --------------------------------------------------------------------------- #
 # Per publicar un post d'IMATGE amb una imatge generada localment (p.ex. el
