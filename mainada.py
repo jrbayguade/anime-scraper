@@ -181,6 +181,59 @@ def parse_criar(_today: date) -> list[Fitxa]:
     return out
 
 
+def parse_socpetit(_today: date) -> list[Fitxa]:
+    """socpetit.cat — agenda familiar. Prova primer l'RSS de WordPress (agenda o
+    general) i, si no en treu res, fa fallback a scraping HTML de /agenda/."""
+    web = "https://www.socpetit.cat"
+    # 1) RSS de WordPress (una categoria «agenda» sol tenir el seu propi feed).
+    for feed in (f"{web}/agenda/feed/", f"{web}/feed/"):
+        try:
+            raw = requests.get(feed, headers=config.HTTP_HEADERS,
+                               timeout=config.REQUEST_TIMEOUT)
+            d = feedparser.parse(raw.content)
+        except Exception as exc:  # noqa: BLE001
+            log.warning("socpetit RSS %s ha fallat: %s", feed, exc)
+            continue
+        out: list[Fitxa] = []
+        for e in d.entries[:8]:
+            summary = BeautifulSoup(e.get("summary", ""), "lxml").get_text(" ", strip=True)
+            out.append(Fitxa(
+                source_key="socpetit", source_name="Soc Petit", source_web=web,
+                title=(e.get("title") or "").strip(),
+                url=(e.get("link") or "").strip(),
+                summary=_clean_summary(summary),
+                image_url=_entry_image(e, og_fallback=True),
+            ))
+        if out:
+            log.info("socpetit: %d entrades del feed (%s).", len(out), feed)
+            return out
+    # 2) Fallback HTML: targetes de l'agenda amb imatge + títol + enllaç propi.
+    soup = _get_soup(f"{web}/agenda/")
+    if not soup:
+        return []
+    out = []
+    seen: set[str] = set()
+    for node in soup.select("article, .item, .card, .event, .agenda-item, .post, li"):
+        a = node.find("a", href=True)
+        if not a:
+            continue
+        href = urljoin(web, a["href"])
+        if href in seen or "socpetit.cat" not in href:
+            continue
+        src = _img_src(node)
+        if not src or any(b in src.lower() for b in _BAD_IMG):
+            continue
+        h = node.find(["h1", "h2", "h3", "h4"])
+        title = (h.get_text(" ", strip=True) if h
+                 else (a.get("title") or a.get_text(" ", strip=True))).strip()
+        if len(title) < 8:
+            continue
+        seen.add(href)
+        out.append(Fitxa("socpetit", "Soc Petit", web, title, href, title, src))
+    log.info("socpetit: %d activitats (HTML).", len(out))
+    return out
+
+
 def parse_surtdecasa_familia(_today: date) -> list[Fitxa]:
     """surtdecasa.cat — agenda de família (HTML; cada `.views-row` és un pla)."""
     web = "https://surtdecasa.cat"
@@ -256,6 +309,10 @@ SOURCES: dict[str, dict] = {
     "surtdecasa_familia": {
         "name": "Surt de casa", "web": "https://surtdecasa.cat",
         "parse": parse_surtdecasa_familia,
+    },
+    "socpetit": {
+        "name": "Soc Petit", "web": "https://www.socpetit.cat",
+        "parse": parse_socpetit,
     },
     "festacatalunya": {
         "name": "Festa Catalunya", "web": "https://www.festacatalunya.cat",
@@ -406,6 +463,7 @@ def build_payload(f: Fitxa, image_url: str, comment: str) -> dict:
 _PROBE_URL = {
     "criar": "https://www.criar.cat/feed/",
     "surtdecasa_familia": "https://surtdecasa.cat/agenda/familia",
+    "socpetit": "https://www.socpetit.cat/agenda/",
     "festacatalunya": "https://www.festacatalunya.cat/activitats-amb-nens-catalunya",
 }
 
