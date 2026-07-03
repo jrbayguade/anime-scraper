@@ -1,0 +1,83 @@
+name: Probe mainada (temporal)
+
+# Workflow temporal per comprovar la viabilitat de fonts candidates per a
+# r/mainada des de les IPs de GitHub Actions (les que fan servir els crons).
+# S'esborrarà un cop tinguem les dades.
+
+on:
+  workflow_dispatch:
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - run: pip install requests beautifulsoup4 feedparser
+      - name: Prova de fonts
+        run: |
+          python - <<'PY'
+          import requests, re
+          from bs4 import BeautifulSoup
+
+          UA = {"User-Agent": "Mozilla/5.0"}
+          PAGES = [
+              ("festacatalunya", "https://www.festacatalunya.cat/activitats-amb-nens-catalunya"),
+              ("surtdecasa_familia", "https://surtdecasa.cat/agenda/familia"),
+              ("barcelona_nens", "https://www.barcelona.cat/capdesetmana/ca/nens-i-nenes"),
+              ("criar", "https://www.criar.cat/"),
+          ]
+
+          def probe(url, ua=True):
+              try:
+                  r = requests.get(url, headers=UA if ua else {}, timeout=20)
+                  return r
+              except Exception as e:
+                  return e
+
+          for key, url in PAGES:
+              print("\n" + "=" * 70)
+              print(f"[{key}] {url}")
+              r = probe(url)
+              if isinstance(r, Exception):
+                  print(f"  ERROR: {type(r).__name__}: {r}")
+                  continue
+              srv = r.headers.get("Server", "?")
+              cf = "cf-ray" in {k.lower() for k in r.headers} or "cloudflare" in srv.lower()
+              print(f"  HTTP {r.status_code} | Server={srv} | Cloudflare={cf} | bytes={len(r.content)}")
+              body_low = r.text[:4000].lower()
+              if "just a moment" in body_low or "challenge-platform" in body_low:
+                  print("  ⚠️  Sembla un repte de Cloudflare (bloqueig probable des de CI)")
+              soup = BeautifulSoup(r.text, "html.parser")
+              t = soup.find("title")
+              print(f"  <title>: {(t.get_text(strip=True)[:80] if t else '—')}")
+              gen = soup.find("meta", attrs={"name": "generator"})
+              if gen:
+                  print(f"  generator: {gen.get('content','')[:60]}")
+              # Enllaços RSS declarats
+              feeds = [l.get("href") for l in soup.find_all("link", type=re.compile("rss|atom"))]
+              if feeds:
+                  print(f"  RSS declarat: {feeds[:3]}")
+
+          # Proves d'endpoints estàndard (wp-json / RSS) per host
+          print("\n" + "#" * 70)
+          print("# Endpoints estàndard")
+          for base in ["https://www.festacatalunya.cat", "https://www.criar.cat", "https://surtdecasa.cat"]:
+              for path in ["/wp-json/wp/v2/posts?per_page=3", "/feed/", "/rss"]:
+                  u = base + path
+                  r = probe(u)
+                  if isinstance(r, Exception):
+                      print(f"  {u} -> ERROR {type(r).__name__}")
+                      continue
+                  ct = r.headers.get("Content-Type", "")
+                  extra = ""
+                  if "json" in ct:
+                      try:
+                          extra = f" | {len(r.json())} items"
+                      except Exception:
+                          extra = " | (json invàlid)"
+                  print(f"  {u} -> {r.status_code} | {ct[:40]}{extra}")
+          PY
