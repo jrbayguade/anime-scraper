@@ -11,12 +11,13 @@ original al peu, en cursiva).
 Fonts i calendari (dt–dv):
     dimarts   → criar.cat            (RSS de criança; WordPress)
     dimecres  → surtdecasa (família) (agenda /agenda/familia; HTML)
-    dijous    → criar.cat            (segona peça de criar)
-    divendres → surtdecasa (família) (segona peça de surtdecasa)
+    dijous    → socpetit             (agenda familiar; RSS /agenda/feed/)
+    divendres → criar.cat            (segona peça de criar, més volum editorial)
 
 Notes de viabilitat (provat des de les IPs de GitHub Actions):
     - criar.cat: WordPress net, RSS a /feed/ (text/xml). Sense Cloudflare. ✅
     - surtdecasa: Drupal (nginx), mateixa estructura `.views-row` que a explorant. ✅
+    - socpetit: WordPress, RSS d'agenda net a /agenda/feed/. Sense Cloudflare. ✅
     - festacatalunya: registrada però NO programada. La pàgina «activitats amb
       nens» és un landing Tailwind on les targetes amb imatge són el menú global
       de seccions (misteris, visites guiades, visita virtual...), no fitxes
@@ -327,16 +328,17 @@ SOURCES: dict[str, dict] = {
 def sources_due(d: date) -> list[str]:
     """Claus de les fonts que toca publicar avui (dimarts a divendres).
 
-    Alternem les dues fonts sòlides (criar i surtdecasa) dos cops cada una. La
-    dedup per URL (mainada_history.json) evita repetir la mateixa fitxa dins la
-    setmana. festacatalunya no hi és (vegeu la nota del docstring del mòdul).
+    Tres fonts diferents (criar, surtdecasa, socpetit); criar es repeteix el
+    divendres perquè té més volum editorial. La dedup per URL (mainada_history.json)
+    evita repetir la mateixa fitxa dins la setmana. festacatalunya no hi és
+    (vegeu la nota del docstring del mòdul).
     """
     dow = d.weekday()   # 0=dilluns ... 6=diumenge
     return {
         1: ["criar"],                 # dimarts
         2: ["surtdecasa_familia"],    # dimecres
-        3: ["criar"],                 # dijous
-        4: ["surtdecasa_familia"],    # divendres
+        3: ["socpetit"],              # dijous
+        4: ["criar"],                 # divendres
     }.get(dow, [])
 
 
