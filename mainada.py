@@ -8,18 +8,21 @@ fa un resum curt en català amb DeepSeek, RE-ALLOTJA la foto a Cloudflare R2 i
 ho publica com a **post d'imatge + primer comentari** (resum + enllaç a la font
 original al peu, en cursiva).
 
-Fonts i calendari:
+Fonts i calendari (dt–dv):
     dimarts   → criar.cat            (RSS de criança; WordPress)
     dimecres  → surtdecasa (família) (agenda /agenda/familia; HTML)
-    dijous    → festacatalunya       (activitats amb nens; HTML)
-    divendres → criar.cat            (segona peça de la setmana)
+    dijous    → criar.cat            (segona peça de criar)
+    divendres → surtdecasa (família) (segona peça de surtdecasa)
 
 Notes de viabilitat (provat des de les IPs de GitHub Actions):
-    - criar.cat: WordPress net, RSS a /feed/ (text/xml). Sense Cloudflare.
-    - surtdecasa: Drupal (nginx), mateixa estructura `.views-row` que a explorant.
-    - festacatalunya: darrere Cloudflare però ara serveix la pàgina sencera
-      (HTTP 200) des de CI. No és WordPress; scraping HTML de targetes. És el
-      candidat més fràgil: si CF apuja la seguretat, caldria substituir-la.
+    - criar.cat: WordPress net, RSS a /feed/ (text/xml). Sense Cloudflare. ✅
+    - surtdecasa: Drupal (nginx), mateixa estructura `.views-row` que a explorant. ✅
+    - festacatalunya: registrada però NO programada. La pàgina «activitats amb
+      nens» és un landing Tailwind on les targetes amb imatge són el menú global
+      de seccions (misteris, visites guiades, visita virtual...), no fitxes
+      d'activitats amb títol propi; el parser genèric no en treu res útil i, a
+      més, va rere Cloudflare. Cal un parser a mida (o substituir-la per una font
+      neta) abans d'afegir-la al calendari. Accessible amb `--source festacatalunya`.
 
 Ús:
     python mainada.py --post                     # preview del que toca avui
@@ -206,12 +209,15 @@ _BAD_IMG = ("logo", "icon", "avatar", "placeholder", "sprite", "banner")
 
 
 def parse_festacatalunya(_today: date) -> list[Fitxa]:
-    """festacatalunya.cat — activitats amb nens (HTML; targetes amb imatge + títol).
+    """festacatalunya.cat — activitats amb nens (HTML). ⚠️ WIP, NO programada.
 
-    No és WordPress i no en coneixem el marcatge exacte, així que el parser és
-    genèric: recorre contenidors de targeta habituals i es queda amb els que
-    tenen enllaç propi, imatge de contingut i un títol raonable. Es valida amb
-    `--diagnose` / `--source festacatalunya --post` des de CI.
+    La pàgina és un landing Tailwind: les targetes amb imatge que troba aquest
+    parser genèric són el menú global de seccions del web (misteris, visites
+    guiades, visita virtual...), no fitxes d'activitats amb títol propi, així que
+    retorna 0 útils. A més, el domini va rere Cloudflare. Es manté registrada per
+    poder-hi tornar (`--source festacatalunya --diagnose` en bolca l'estructura),
+    però queda FORA del calendari fins que tingui un parser a mida o se substitueixi
+    per una font neta. Vegeu la nota del docstring del mòdul.
     """
     web = "https://www.festacatalunya.cat"
     soup = _get_soup(f"{web}/activitats-amb-nens-catalunya")
@@ -262,13 +268,18 @@ SOURCES: dict[str, dict] = {
 # Calendari: quines fonts toquen avui (dt–dv)                                  #
 # --------------------------------------------------------------------------- #
 def sources_due(d: date) -> list[str]:
-    """Claus de les fonts que toca publicar avui (dimarts a divendres)."""
+    """Claus de les fonts que toca publicar avui (dimarts a divendres).
+
+    Alternem les dues fonts sòlides (criar i surtdecasa) dos cops cada una. La
+    dedup per URL (mainada_history.json) evita repetir la mateixa fitxa dins la
+    setmana. festacatalunya no hi és (vegeu la nota del docstring del mòdul).
+    """
     dow = d.weekday()   # 0=dilluns ... 6=diumenge
     return {
         1: ["criar"],                 # dimarts
         2: ["surtdecasa_familia"],    # dimecres
-        3: ["festacatalunya"],        # dijous
-        4: ["criar"],                 # divendres
+        3: ["criar"],                 # dijous
+        4: ["surtdecasa_familia"],    # divendres
     }.get(dow, [])
 
 

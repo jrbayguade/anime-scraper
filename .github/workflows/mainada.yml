@@ -4,7 +4,7 @@ on:
   schedule:
     # De dimarts a divendres a les 07:00 UTC (09:00 hora catalana a l'estiu /
     # 08:00 a l'hivern). mainada.py decideix la font segons el dia de la setmana:
-    # dt→criar, dc→surtdecasa, dj→festacatalunya, dv→criar. El cron sempre és UTC.
+    # dt→criar, dc→surtdecasa, dj→criar, dv→surtdecasa. El cron sempre és UTC.
     - cron: "0 7 * * 2,3,4,5"
   workflow_dispatch:
     inputs:
