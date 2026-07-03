@@ -1,0 +1,76 @@
+name: Mainada · activitats en família (dt–dv)
+
+on:
+  schedule:
+    # De dimarts a divendres a les 07:00 UTC (09:00 hora catalana a l'estiu /
+    # 08:00 a l'hivern). mainada.py decideix la font segons el dia de la setmana:
+    # dt→criar, dc→surtdecasa, dj→festacatalunya, dv→criar. El cron sempre és UTC.
+    - cron: "0 7 * * 2,3,4,5"
+  workflow_dispatch:
+    inputs:
+      source:
+        description: "Font concreta (criar | surtdecasa_familia | festacatalunya; buit = calendari)"
+        type: string
+        default: ""
+      all:
+        description: "Publica TOTES les fonts (ignora el calendari) — per provar"
+        type: boolean
+        default: false
+      diagnose:
+        description: "Diagnòstic: mostra què rep cada font (no encua res)"
+        type: boolean
+        default: false
+
+# Permís per desar l'històric (output/mainada_history.json) de tornada al repo.
+permissions:
+  contents: write
+
+concurrency:
+  group: mainada
+  cancel-in-progress: false
+
+jobs:
+  mainada:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Descarrega el codi
+        uses: actions/checkout@v5
+
+      - name: Prepara Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Instal·la dependències
+        run: pip install -r requirements.txt
+
+      - name: Publica l'activitat que toqui avui
+        env:
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          WORKER_URL: ${{ secrets.WORKER_URL }}
+          WORKER_WRITE_TOKEN: ${{ secrets.WORKER_WRITE_TOKEN }}
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_PUBLIC_BASE: ${{ secrets.R2_PUBLIC_BASE }}
+          MAINADA_SUBREDDIT: ${{ secrets.MAINADA_SUBREDDIT }}
+          SOURCE: ${{ github.event.inputs.source }}
+          ALL: ${{ github.event.inputs.all }}
+          DIAGNOSE: ${{ github.event.inputs.diagnose }}
+        run: |
+          if [ "$DIAGNOSE" = "true" ]; then
+            python mainada.py --diagnose
+          elif [ "$ALL" = "true" ]; then
+            python mainada.py --push --quiet --all
+          elif [ -n "$SOURCE" ]; then
+            python mainada.py --push --quiet --source "$SOURCE"
+          else
+            python mainada.py --push --quiet
+          fi
+
+      - name: Desa l'històric (resistent a curses)
+        if: always()
+        run: |
+          bash scripts/sync_queue.sh "chore: històric de mainada [skip ci]" output/mainada_history.json
