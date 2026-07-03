@@ -84,6 +84,12 @@ scraper → queue_store.enqueue() → POST /enqueue al Cloudflare Worker privat
   (`config.QUEUE_SOURCE` / `QUEUE_SOURCE_LABEL`). Així una sortida nova pot
   publicar a **un altre subreddit** sense canviar la canonada (només cal tenir
   permís per postejar-hi des del compte que fa servir l'extensió).
+  ✅ **Verificat contra el codi de l'extensió i el Worker** (`jrbayguade/reddit-extension`):
+  **no hi ha cap allowlist** de fonts ni de subreddits enlloc. El Worker
+  (`buildItem`) només valida l'estructura del payload; l'extensió agrupa per
+  `source` dinàmicament i construeix el destí directament de `payload.subreddit`
+  (`https://old.reddit.com/r/<subreddit>/submit`). Afegir fonts/crons/subreddits
+  nous es fa **només a `anime-scraper`**, sense tocar l'extensió.
 
 ### El Worker és genèric i reutilitzable
 
@@ -111,9 +117,12 @@ El `payload` mínim que rep `enqueue()`:
   de Reddit **no té cos de text**.
 - **`comment_markdown`** (opcional, qualsevol `tipus`) → text per a un **primer
   comentari** al post. Aquest és el mecanisme per acompanyar una imatge amb text:
-  post d'imatge + comentari. L'índex en porta el flag `has_comment`. *(Pendent de
-  confirmar que l'extensió publica aquest comentari; el seu codi viu en un altre
-  repo.)*
+  post d'imatge + comentari. L'índex en porta el flag `has_comment` (el Worker el
+  deriva de `!!comment_markdown`). ✅ **Confirmat:** l'extensió publica aquest
+  comentari — quan el post arriba a `/comments/`, injecta `fillComment()` amb el
+  text. És *best-effort*: si no pot confirmar l'enviament, deixa el text escrit a
+  la caixa de resposta i t'avisa amb una notificació perquè el desis a mà. (Codi:
+  `service-worker.js` → `handlePublished()`, repo `jrbayguade/reddit-extension`.)
 
 `enqueue()` mapeja `generated_at` → `created_at` del Worker i hi afegeix
 `source`/`source_label`.
