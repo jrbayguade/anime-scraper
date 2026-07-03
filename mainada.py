@@ -399,28 +399,65 @@ _PROBE_URL = {
 }
 
 
+def _inspect_structure(url: str) -> None:
+    """Quan un parser HTML dona 0 fitxes: bolca pistes del marcatge (contenidors
+    amb imatge, classes, src/data-src) per poder-lo calibrar sense veure la web."""
+    soup = _get_soup(url)
+    if not soup:
+        print("   (no s'ha pogut baixar per inspeccionar)")
+        return
+    imgs = soup.find_all("img")
+    http_src = sum(1 for i in imgs if (i.get("src") or "").startswith("http"))
+    data_src = sum(1 for i in imgs
+                   if (i.get("data-src") or i.get("data-lazy-src") or "").startswith("http"))
+    print(f"   estructura: imgs={len(imgs)} (src http={http_src}, data-src http={data_src})"
+          f" · a[href]={len(soup.find_all('a', href=True))}")
+    shown = 0
+    for img in imgs:
+        a = img.find_parent("a", href=True)
+        node = a or img.find_parent(["article", "li", "div"])
+        if not node:
+            continue
+        cls = ".".join(node.get("class", []) or [])
+        href = (a.get("href", "") if a else "")[-45:]
+        src = (img.get("src") or img.get("data-src") or img.get("data-lazy-src") or "")[:55]
+        h = node.find(["h1", "h2", "h3", "h4"])
+        title = (h.get_text(" ", strip=True)[:45] if h else "")
+        print(f"   <{node.name} class='{cls[:45]}'> href=…{href} img={src} h='{title}'")
+        shown += 1
+        if shown >= 6:
+            break
+
+
 def diagnose(keys: list[str]) -> None:
     """Ensenya, sense encuar, què rep el CI de cada font (resposta crua + nº fitxes)."""
     for key in keys:
         url = _PROBE_URL.get(key, "")
         line = f"[{key}]"
+        ctype = ""
         if url:
             try:
                 r = requests.get(url, headers={**config.HTTP_HEADERS, "Accept": "*/*"},
                                  timeout=config.REQUEST_TIMEOUT)
+                ctype = r.headers.get("Content-Type", "?")
                 snippet = r.text[:90].replace("\n", " ").replace("\r", " ")
-                line += (f" HTTP {r.status_code} · {r.headers.get('Content-Type','?')[:25]}"
+                line += (f" HTTP {r.status_code} · {ctype[:25]}"
                          f" · {len(r.content)}B · «{snippet}»")
             except Exception as exc:  # noqa: BLE001
                 line += f" FETCH ERROR: {exc}"
+        nfitxes = -1
         try:
             fitxes = SOURCES[key]["parse"](date.today())
-            line += f"  →  {len(fitxes)} fitxes"
+            nfitxes = len(fitxes)
+            line += f"  →  {nfitxes} fitxes"
             if fitxes:
                 line += f" · p.ex.: «{fitxes[0].title[:50]}»"
         except Exception as exc:  # noqa: BLE001
             line += f"  →  PARSER ERROR: {exc}"
         print(line)
+        # Font HTML que no ha tret res: bolca pistes del marcatge per calibrar-la.
+        if nfitxes == 0 and url and "html" in ctype.lower():
+            _inspect_structure(url)
 
 
 def parse_args() -> argparse.Namespace:
